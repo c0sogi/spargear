@@ -1,4 +1,4 @@
-# spargear 🛠️
+# ⚙️ spargear
 
 ![PyPI](https://img.shields.io/pypi/v/spargear?label=pypi%20package)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/spargear)
