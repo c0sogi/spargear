@@ -369,6 +369,7 @@ class BaseArguments:
                         default=attr_value,
                         required=attr_value is None and not is_optional(attr_hint),
                         help=docstrings.get(attr_name, ""),
+                        action="store_true" if attr_hint is bool else None,
                     )
 
                 if attr_name in cls.__arguments__:
