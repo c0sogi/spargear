@@ -79,6 +79,16 @@ class SimpleArguments(BaseArguments):
     )
 
 
+class BareTypeArguments(BaseArguments):
+    """Example argument parser demonstrating bare type."""
+
+    optional_int_with_default: Optional[int] = None
+    optional_int_without_default: Optional[int]
+    float_with_default: float = 0.0
+    float_without_default: float
+    float_with_str_default: float = "1.23"  # type: ignore[assignment]
+
+
 class BazArgs(BaseArguments):
     qux: ArgumentSpec[str] = ArgumentSpec(["--qux"], help="qux argument")
 
@@ -207,6 +217,17 @@ class TestNestedSubcommands(unittest.TestCase):
             RootArgs.load([])  # missing foo positional
         with self.assertRaises(SystemExit):
             RootArgs.load(["FOO_VAL", "VAL", "bar"])  # missing baz sub-subcommand
+
+
+class TestBareType(unittest.TestCase):
+    def test_bare_type(self):
+        # Test with default values
+        args = BareTypeArguments(["--float-without-default", "3.14"])
+        self.assertEqual(args.optional_int_with_default, None)
+        self.assertEqual(args.optional_int_without_default, None)
+        self.assertEqual(args.float_with_default, 0.0)
+        self.assertEqual(args.float_without_default, 3.14)
+        self.assertEqual(args.float_with_str_default, 1.23)
 
 
 if __name__ == "__main__":

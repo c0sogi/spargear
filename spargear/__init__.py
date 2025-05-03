@@ -8,6 +8,7 @@ from typing import (
     Dict,
     Generic,
     Iterable,
+    Iterator,
     List,
     Literal,
     NamedTuple,
@@ -125,44 +126,36 @@ class ArgumentSpecType(NamedTuple):
 
     T: object  # The T in ArgumentSpec[T]
     element_type: Optional[Type[object]]  # The E in ArgumentSpec[List[E]] or ArgumentSpec[Tuple[E, ...]]
+    is_bare_type: bool = False
 
     @classmethod
-    def from_hint(cls, hints: Dict[str, object], attr_name: str) -> Optional["ArgumentSpecType"]:
-        """Extract type information from type hints."""
-        if attr_name not in hints:
-            return None
-
-        hint = hints[attr_name]
-        hint_origin = get_origin(hint)
-        hint_args = get_args(hint)
+    def from_type_hint(cls, t: object):
+        """Extract type information from a type hint."""
 
         if (
-            hint_origin is not None
+            (hint_origin := get_origin(t)) is not None
             and isinstance(hint_origin, type)
             and issubclass(hint_origin, ArgumentSpec)
-            and hint_args
+            and (hint_args := get_args(t))
         ):
-            T: object = hint_args[0]  # Extract T
-            element_type: Optional[Type[object]]
+            # Extract T from ArgumentSpec[T]
+            t = hint_args[0]
+            is_bare_type = False
+        else:
+            is_bare_type = True
 
-            outer_origin = get_origin(T)
-            if isinstance(outer_origin, type):
-                if issubclass(outer_origin, list) and (args := get_args(T)) and (isinstance(arg := args[0], type)):
-                    element_type = arg  # Extract E from List[E]
-                elif issubclass(outer_origin, tuple) and (args := get_args(T)):
-                    # For Tuple[E, ...] or Tuple[E1, E2, ...]
-                    first_type: Optional[Type[object]] = next((arg for arg in args if isinstance(arg, type)), None)
-                    if first_type is not None:
-                        element_type = first_type
-                    else:
-                        element_type = None
-                else:
-                    element_type = None
-            else:
-                element_type = None
+        element_type: Optional[Type[object]] = None
+        outer_origin = get_origin(t)
+        if isinstance(outer_origin, type):
+            if issubclass(outer_origin, list) and (args := get_args(t)) and (isinstance(arg := args[0], type)):
+                element_type = arg  # Extract E from List[E]
+            elif issubclass(outer_origin, tuple) and (args := get_args(t)):
+                # For Tuple[E, ...] or Tuple[E1, E2, ...]
+                first_type: Optional[Type[object]] = next((arg for arg in args if isinstance(arg, type)), None)
+                if first_type is not None:
+                    element_type = first_type
 
-            return cls(T=T, element_type=element_type)
-        return None
+        return cls(T=t, element_type=element_type, is_bare_type=is_bare_type)
 
     @property
     def choices(self) -> Optional[Tuple[object, ...]]:
@@ -234,8 +227,7 @@ class SubcommandSpec(Generic[S]):
 class BaseArguments:
     """Base class for defining arguments declaratively using ArgumentSpec."""
 
-    __argspec__: Dict[str, ArgumentSpec[object]]
-    __argspectype__: Dict[str, ArgumentSpecType]
+    __arguments__: Dict[str, Tuple[ArgumentSpec[object], ArgumentSpecType]]
     __subcommands__: Dict[str, SubcommandSpec["BaseArguments"]]
     __parent__: Optional[Type["BaseArguments"]] = None
 
@@ -286,11 +278,11 @@ class BaseArguments:
 
     @classmethod
     def __getitem__(cls, key: str) -> Optional[object]:
-        return cls.__argspec__[key].value
+        return cls.__arguments__[key][0].value
 
     @classmethod
     def get(cls, key: str) -> Optional[object]:
-        return cls.__argspec__[key].value
+        return cls.__arguments__[key][0].value
 
     @classmethod
     def keys(cls) -> Iterable[str]:
@@ -302,7 +294,7 @@ class BaseArguments:
 
     @classmethod
     def items(cls) -> Iterable[Tuple[str, object]]:
-        yield from ((key, spec.value) for key, spec in cls._iter_specs() if spec.value is not None)
+        yield from ((key, spec.value) for key, spec, _ in cls._iter_arguments() if spec.value is not None)
 
     @classmethod
     def get_parser(cls) -> argparse.ArgumentParser:
@@ -319,7 +311,7 @@ class BaseArguments:
 
     @classmethod
     def load_from_namespace(cls, args: argparse.Namespace) -> None:
-        for key, spec in cls._iter_specs():
+        for key, spec, spec_type in cls._iter_arguments():
             is_positional = not any(n.startswith("-") for n in spec.name_or_flags)
             attr = spec.name_or_flags[0] if is_positional else (spec.dest or key)
             if not hasattr(args, attr):
@@ -327,25 +319,26 @@ class BaseArguments:
             val = getattr(args, attr)
             if val is argparse.SUPPRESS:
                 continue
-            if st := cls.__argspectype__.get(key):
-                if st.should_return_as_list:
+            if spec_type.should_return_as_list:
+                if isinstance(val, list):
+                    val = cast(List[object], val)
+                elif val is not None:
+                    val = [val]
+            elif spec_type.should_return_as_tuple:
+                if isinstance(val, tuple):
+                    val = cast(Tuple[object, ...], val)
+                elif val is not None:
                     if isinstance(val, list):
-                        val = cast(List[object], val)
-                    elif val is not None:
-                        val = [val]
-                elif st.should_return_as_tuple:
-                    if isinstance(val, tuple):
-                        val = cast(Tuple[object, ...], val)
-                    elif val is not None:
-                        if isinstance(val, list):
-                            val = tuple(cast(List[object], val))
-                        else:
-                            val = (val,)
+                        val = tuple(cast(List[object], val))
+                    else:
+                        val = (val,)
             spec.value = val
+            if spec_type.is_bare_type:
+                setattr(cls, key, val)
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        cls.__argspec__ = {}
+        cls.__arguments__ = {}
         cls.__argspectype__ = {}
         cls.__subcommands__ = {}
 
@@ -353,10 +346,8 @@ class BaseArguments:
             if current_cls in (object, BaseArguments):
                 continue
 
-            vars_ = vars(current_cls)
-
             # Subcommands
-            for attr_name, attr_value in vars_.items():
+            for attr_value in vars(current_cls).values():
                 if isinstance(attr_value, SubcommandSpec):
                     attr_value = cast(SubcommandSpec["BaseArguments"], attr_value)
                     cls.__subcommands__[attr_value.name] = attr_value
@@ -364,32 +355,36 @@ class BaseArguments:
                         attr_value.argument_class.__parent__ = cls
 
             # ArgumentSpecs
-            try:
-                hints: Dict[str, object] = get_type_hints(current_cls)
-                for attr_name, attr_value in vars_.items():
-                    if isinstance(attr_value, ArgumentSpec):
-                        spec: ArgumentSpec[object] = cast(ArgumentSpec[object], attr_value)
-                        if spec_type := ArgumentSpecType.from_hint(hints, attr_name):
-                            cls.__argspectype__[attr_name] = spec_type
-                            if literals := spec_type.choices:
-                                spec.choices = literals
-                            if spec.type is None and (th := spec_type.type):
-                                spec.type = th
-                            if tn := spec_type.tuple_nargs:
-                                spec.nargs = tn
-                        cls.__argspec__[attr_name] = spec
-            except Exception as e:
-                warnings.warn(
-                    f"Could not fully analyze type hints for {current_cls.__name__}: {e}",
-                    stacklevel=2,
-                )
-                for attr_name, attr_value in vars_.items():
-                    if isinstance(attr_value, ArgumentSpec) and attr_name not in cls.__argspec__:
-                        cls.__argspec__[attr_name] = attr_value
+            for attr_name, attr_hint in get_type_hints_without_base_arguments(current_cls):
+                attr_value: Optional[object] = getattr(current_cls, attr_name, None)
+                if isinstance(attr_value, ArgumentSpec):
+                    spec = cast(ArgumentSpec[object], attr_value)
+                else:
+                    spec: ArgumentSpec[object] = ArgumentSpec(
+                        name_or_flags=[sanitize_name(attr_name)],
+                        default=attr_value,
+                        required=attr_value is None and not is_optional(attr_hint),
+                    )
+
+                if attr_name in cls.__arguments__:
+                    warnings.warn(f"Duplicate argument name '{attr_name}' in {current_cls.__name__}.", UserWarning)
+
+                try:
+                    spec_type: ArgumentSpecType = ArgumentSpecType.from_type_hint(attr_hint)
+                    if literals := spec_type.choices:
+                        spec.choices = literals
+                    if spec.type is None and (th := spec_type.type):
+                        spec.type = th
+                    if tn := spec_type.tuple_nargs:
+                        spec.nargs = tn
+                    cls.__arguments__[attr_name] = (spec, spec_type)
+                except Exception as e:
+                    warnings.warn(f"Error processing {attr_name} in {current_cls.__name__}: {e}", UserWarning)
+                    continue
 
     @classmethod
-    def _iter_specs(cls) -> Iterable[Tuple[str, ArgumentSpec[object]]]:
-        yield from cls.__argspec__.items()
+    def _iter_arguments(cls) -> Iterable[Tuple[str, ArgumentSpec[object], ArgumentSpecType]]:
+        yield from ((key, spec, spec_type) for key, (spec, spec_type) in cls.__arguments__.items())
 
     @classmethod
     def _iter_subcommands(cls) -> Iterable[Tuple[str, SubcommandSpec["BaseArguments"]]]:
@@ -408,7 +403,7 @@ class BaseArguments:
     @classmethod
     def _configure_parser(cls, parser: argparse.ArgumentParser) -> None:
         # 1) add this class's own arguments
-        for key, spec in cls._iter_specs():
+        for key, spec, _ in cls._iter_arguments():
             kwargs = spec.get_add_argument_kwargs()
             is_positional = not any(name.startswith("-") for name in spec.name_or_flags)
             if is_positional:
@@ -429,7 +424,7 @@ class BaseArguments:
                 title="subcommands",
                 dest=dest_name,
                 help="Available subcommands",
-                required=not cls.__argspec__ and bool(cls.__subcommands__),
+                required=not cls.__arguments__ and bool(cls.__subcommands__),
             )
             for name, subc in cls._iter_subcommands():
                 subparser = subparsers.add_parser(
@@ -451,6 +446,20 @@ def get_args(obj: object) -> Tuple[object, ...]:
     return typing_get_args(obj)
 
 
-def get_type_hints(obj: object) -> Dict[str, object]:
-    """Get the type hints of a class or function, similar to typing.get_type_hints."""
-    return typing_get_type_hints(obj)
+def get_type_hints_without_base_arguments(obj: object) -> Iterator[Tuple[str, object]]:
+    """Get type hints for an object, excluding those in BaseArguments."""
+    base_arguments_attrs: List[str] = [key for key in typing_get_type_hints(BaseArguments).keys()]
+    for k, v in typing_get_type_hints(obj).items():
+        if k in base_arguments_attrs:
+            continue
+        yield k, v
+
+
+def sanitize_name(name: str) -> str:
+    """Sanitize a name for use as a command-line argument."""
+    return "--" + name.replace("_", "-").lower().lstrip("-")
+
+
+def is_optional(t: object) -> bool:
+    """Check if a type is Optional."""
+    return get_origin(t) is Union and len(args := get_args(t)) == 2 and type(None) in args
