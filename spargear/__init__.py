@@ -1,5 +1,8 @@
 import argparse
+import ast
+import inspect
 import logging
+import textwrap
 import warnings
 from dataclasses import dataclass, field, fields
 from typing import (
@@ -355,6 +358,7 @@ class BaseArguments:
                         attr_value.argument_class.__parent__ = cls
 
             # ArgumentSpecs
+            docstrings = extract_attr_docstrings(current_cls)
             for attr_name, attr_hint in get_type_hints_without_base_arguments(current_cls):
                 attr_value: Optional[object] = getattr(current_cls, attr_name, None)
                 if isinstance(attr_value, ArgumentSpec):
@@ -364,6 +368,7 @@ class BaseArguments:
                         name_or_flags=[sanitize_name(attr_name)],
                         default=attr_value,
                         required=attr_value is None and not is_optional(attr_hint),
+                        help=docstrings.get(attr_name, ""),
                     )
 
                 if attr_name in cls.__arguments__:
@@ -377,6 +382,8 @@ class BaseArguments:
                         spec.type = th
                     if tn := spec_type.tuple_nargs:
                         spec.nargs = tn
+                    elif spec.nargs is None and spec_type.should_return_as_list or spec_type.should_return_as_tuple:
+                        spec.nargs = "*"
                     cls.__arguments__[attr_name] = (spec, spec_type)
                 except Exception as e:
                     warnings.warn(f"Error processing {attr_name} in {current_cls.__name__}: {e}", UserWarning)
@@ -463,3 +470,35 @@ def sanitize_name(name: str) -> str:
 def is_optional(t: object) -> bool:
     """Check if a type is Optional."""
     return get_origin(t) is Union and len(args := get_args(t)) == 2 and type(None) in args
+
+
+def extract_attr_docstrings(cls: Type[object]) -> Dict[str, str]:
+    """
+    Extracts docstrings from class attributes.
+    This function inspects the class definition and retrieves the docstrings
+    associated with each attribute.
+    """
+    source = inspect.getsource(cls)
+    source_ast = ast.parse(textwrap.dedent(source))
+
+    docstrings: Dict[str, str] = {}
+    last_attr: Optional[str] = None
+
+    class_def = next((node for node in source_ast.body if isinstance(node, ast.ClassDef)), None)
+    if class_def is None:
+        return {}
+
+    for node in class_def.body:
+        # Annotated assignment (e.g., `a: int`)
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            last_attr = node.target.id
+
+        # """docstring"""
+        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            if isinstance(node.value.value, str) and last_attr:
+                docstrings[last_attr] = node.value.value.strip()
+                last_attr = None
+        else:
+            last_attr = None  # cut off if we see something else
+
+    return docstrings

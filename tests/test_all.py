@@ -4,7 +4,6 @@ import tempfile
 import unittest
 from typing import List, Literal, Optional, Tuple
 
-# 프로젝트 최상위에 spargear 모듈이 있다고 가정
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from spargear import (
@@ -15,32 +14,6 @@ from spargear import (
     SubcommandSpec,
     TypedFileType,
 )
-
-
-#
-# ─── 예제용 Argument 정의 ────────────────────────────────────────────────────────
-#
-class GitCommitArguments(BaseArguments):
-    """Git commit command arguments."""
-
-    message: ArgumentSpec[str] = ArgumentSpec(["-m", "--message"], required=True, help="Commit message")
-    amend: ArgumentSpec[bool] = ArgumentSpec(["--amend"], action="store_true", help="Amend previous commit")
-
-
-class GitPushArguments(BaseArguments):
-    """Git push command arguments."""
-
-    remote: ArgumentSpec[str] = ArgumentSpec(["remote"], nargs="?", default="origin", help="Remote name")
-    branch: ArgumentSpec[Optional[str]] = ArgumentSpec(["branch"], nargs="?", help="Branch name")
-    force: ArgumentSpec[bool] = ArgumentSpec(["-f", "--force"], action="store_true", help="Force push")
-
-
-class GitArguments(BaseArguments):
-    """Git command line interface example."""
-
-    verbose: ArgumentSpec[bool] = ArgumentSpec(["-v", "--verbose"], action="store_true", help="Increase verbosity")
-    commit_cmd = SubcommandSpec(name="commit", help="Record changes", argument_class=GitCommitArguments)
-    push_cmd = SubcommandSpec(name="push", help="Update remote", argument_class=GitPushArguments)
 
 
 class SimpleArguments(BaseArguments):
@@ -79,32 +52,6 @@ class SimpleArguments(BaseArguments):
     )
 
 
-class BareTypeArguments(BaseArguments):
-    """Example argument parser demonstrating bare type."""
-
-    optional_int_with_default: Optional[int] = None
-    optional_int_without_default: Optional[int]
-    float_with_default: float = 0.0
-    float_without_default: float
-    float_with_str_default: float = "1.23"  # type: ignore[assignment]
-
-
-class BazArgs(BaseArguments):
-    qux: ArgumentSpec[str] = ArgumentSpec(["--qux"], help="qux argument")
-
-
-class BarArgs(BaseArguments):
-    baz = SubcommandSpec("baz", help="do baz", argument_class=BazArgs)
-
-
-class RootArgs(BaseArguments):
-    foo: ArgumentSpec[str] = ArgumentSpec(["foo"], help="foo argument")
-    bar = SubcommandSpec("bar", help="do bar", argument_class=BarArgs)
-
-
-#
-# ─── 테스트 케이스 ─────────────────────────────────────────────────────────────────
-#
 class TestSimpleArguments(unittest.TestCase):
     def test_missing_required(self):
         parser = SimpleArguments.get_parser()
@@ -176,6 +123,29 @@ class TestSimpleArguments(unittest.TestCase):
             parser.parse_args(["-i", "1", "in.txt", "--tuple-features", "BAD", "LOGGING"])
 
 
+class GitCommitArguments(BaseArguments):
+    """Git commit command arguments."""
+
+    message: ArgumentSpec[str] = ArgumentSpec(["-m", "--message"], required=True, help="Commit message")
+    amend: ArgumentSpec[bool] = ArgumentSpec(["--amend"], action="store_true", help="Amend previous commit")
+
+
+class GitPushArguments(BaseArguments):
+    """Git push command arguments."""
+
+    remote: ArgumentSpec[str] = ArgumentSpec(["remote"], nargs="?", default="origin", help="Remote name")
+    branch: ArgumentSpec[Optional[str]] = ArgumentSpec(["branch"], nargs="?", help="Branch name")
+    force: ArgumentSpec[bool] = ArgumentSpec(["-f", "--force"], action="store_true", help="Force push")
+
+
+class GitArguments(BaseArguments):
+    """Git command line interface example."""
+
+    verbose: ArgumentSpec[bool] = ArgumentSpec(["-v", "--verbose"], action="store_true", help="Increase verbosity")
+    commit_cmd = SubcommandSpec(name="commit", help="Record changes", argument_class=GitCommitArguments)
+    push_cmd = SubcommandSpec(name="push", help="Update remote", argument_class=GitPushArguments)
+
+
 class TestGitArguments(unittest.TestCase):
     def test_commit_subcommand(self):
         # commit requires -m
@@ -206,6 +176,19 @@ class TestGitArguments(unittest.TestCase):
         self.assertTrue(push.force.unwrap())
 
 
+class BazArgs(BaseArguments):
+    qux: ArgumentSpec[str] = ArgumentSpec(["--qux"], help="qux argument")
+
+
+class BarArgs(BaseArguments):
+    baz = SubcommandSpec("baz", help="do baz", argument_class=BazArgs)
+
+
+class RootArgs(BaseArguments):
+    foo: ArgumentSpec[str] = ArgumentSpec(["foo"], help="foo argument")
+    bar = SubcommandSpec("bar", help="do bar", argument_class=BarArgs)
+
+
 class TestNestedSubcommands(unittest.TestCase):
     def test_two_levels(self):
         baz = RootArgs.load(["FOO_VAL", "bar", "baz", "--qux", "QUX_VAL"])
@@ -219,15 +202,39 @@ class TestNestedSubcommands(unittest.TestCase):
             RootArgs.load(["FOO_VAL", "VAL", "bar"])  # missing baz sub-subcommand
 
 
+class BareTypeArguments(BaseArguments):
+    """Example argument parser demonstrating bare type."""
+
+    optional_int_with_default: Optional[int] = None
+    optional_int_without_default: Optional[int]
+    float_with_default: float = 0.0
+    """float_with_default"""
+    float_without_default: float
+    float_with_str_default: float = "1.23"  # type: ignore[assignment]
+    list_of_ints_without_default: List[int]
+    """list_of_ints_without_default"""
+    some_argument: ArgumentSpec[bool] = ArgumentSpec(["--some-argument"], action="store_true", help="some_argument")
+    """This should be ignored"""
+
+
 class TestBareType(unittest.TestCase):
-    def test_bare_type(self):
-        # Test with default values
-        args = BareTypeArguments(["--float-without-default", "3.14"])
-        self.assertEqual(args.optional_int_with_default, None)
+    def test_bare_type_without_default(self):
+        args = BareTypeArguments(["--float-without-default", "3.14", "--list-of-ints-without-default", "1", "2", "3"])
         self.assertEqual(args.optional_int_without_default, None)
-        self.assertEqual(args.float_with_default, 0.0)
         self.assertEqual(args.float_without_default, 3.14)
+        self.assertEqual(args.list_of_ints_without_default, [1, 2, 3])
+
+    def test_bare_type_with_default(self):
+        args = BareTypeArguments(["--float-without-default", "3.14", "--list-of-ints-without-default", "1", "2", "3"])
+        self.assertEqual(args.optional_int_with_default, None)
+        self.assertEqual(args.float_with_default, 0.0)
         self.assertEqual(args.float_with_str_default, 1.23)
+
+    def test_bare_type_docs(self):
+        args = BareTypeArguments(["--float-without-default", "3.14", "--list-of-ints-without-default", "1", "2", "3"])
+        self.assertEqual(args.__arguments__["float_with_default"][0].help, "float_with_default")
+        self.assertEqual(args.__arguments__["list_of_ints_without_default"][0].help, "list_of_ints_without_default")
+        self.assertEqual(args.__arguments__["some_argument"][0].help, "some_argument")
 
 
 if __name__ == "__main__":
