@@ -479,27 +479,31 @@ def extract_attr_docstrings(cls: Type[object]) -> Dict[str, str]:
     This function inspects the class definition and retrieves the docstrings
     associated with each attribute.
     """
-    source = inspect.getsource(cls)
-    source_ast = ast.parse(textwrap.dedent(source))
+    try:
+        source = inspect.getsource(cls)
+        source_ast = ast.parse(textwrap.dedent(source))
 
-    docstrings: Dict[str, str] = {}
-    last_attr: Optional[str] = None
+        docstrings: Dict[str, str] = {}
+        last_attr: Optional[str] = None
 
-    class_def = next((node for node in source_ast.body if isinstance(node, ast.ClassDef)), None)
-    if class_def is None:
+        class_def = next((node for node in source_ast.body if isinstance(node, ast.ClassDef)), None)
+        if class_def is None:
+            return {}
+
+        for node in class_def.body:
+            # Annotated assignment (e.g., `a: int`)
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                last_attr = node.target.id
+
+            # """docstring"""
+            elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+                if isinstance(node.value.value, str) and last_attr:
+                    docstrings[last_attr] = node.value.value.strip()
+                    last_attr = None
+            else:
+                last_attr = None  # cut off if we see something else
+
+        return docstrings
+    except Exception as e:
+        logger.warning(f"Failed to extract docstrings from {cls.__name__}: {e}")
         return {}
-
-    for node in class_def.body:
-        # Annotated assignment (e.g., `a: int`)
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            last_attr = node.target.id
-
-        # """docstring"""
-        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
-            if isinstance(node.value.value, str) and last_attr:
-                docstrings[last_attr] = node.value.value.strip()
-                last_attr = None
-        else:
-            last_attr = None  # cut off if we see something else
-
-    return docstrings
