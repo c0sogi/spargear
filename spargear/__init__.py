@@ -5,6 +5,7 @@ import logging
 import textwrap
 import warnings
 from dataclasses import dataclass, field, fields
+from traceback import print_exc
 from typing import (
     IO,
     Callable,
@@ -20,6 +21,7 @@ from typing import (
     Sequence,
     Tuple,
     Type,
+    TypeAlias,
     TypeVar,
     Union,
     cast,
@@ -54,6 +56,8 @@ Action = Optional[
         "extend",
     ]
 ]
+ContainerTypes: TypeAlias = tuple[Type[list[object]] | Type[tuple[object, ...]], ...]
+
 T = TypeVar("T")
 S = TypeVar("S", bound="BaseArguments")
 
@@ -128,64 +132,29 @@ class ArgumentSpecType(NamedTuple):
     """Represents the type information extracted from ArgumentSpec type hints."""
 
     T: object  # The T in ArgumentSpec[T]
-    element_type: Optional[Type[object]]  # The E in ArgumentSpec[List[E]] or ArgumentSpec[Tuple[E, ...]]
-    is_bare_type: bool = False
+    type_of_list_element: Optional[type]  # The E in ArgumentSpec[List[E]] or ArgumentSpec[Tuple[E, ...]]
+    is_specless_type: bool = False
 
     @classmethod
-    def from_type_hint(cls, t: object):
+    def from_type_hint(cls, type_hint: object):
         """Extract type information from a type hint."""
-
-        if (
-            (hint_origin := get_origin(t)) is not None
-            and isinstance(hint_origin, type)
-            and issubclass(hint_origin, ArgumentSpec)
-            and (hint_args := get_args(t))
-        ):
-            # Extract T from ArgumentSpec[T]
-            t = hint_args[0]
-            is_bare_type = False
-        else:
-            is_bare_type = True
-
-        element_type: Optional[Type[object]] = None
-        outer_origin = get_origin(t)
-        if isinstance(outer_origin, type):
-            if issubclass(outer_origin, list) and (args := get_args(t)) and (isinstance(arg := args[0], type)):
-                element_type = arg  # Extract E from List[E]
-            elif issubclass(outer_origin, tuple) and (args := get_args(t)):
-                # For Tuple[E, ...] or Tuple[E1, E2, ...]
-                first_type: Optional[Type[object]] = next((arg for arg in args if isinstance(arg, type)), None)
-                if first_type is not None:
-                    element_type = first_type
-
-        return cls(T=t, element_type=element_type, is_bare_type=is_bare_type)
+        t = unwrap_argument_spec(type_hint)
+        return cls(
+            T=t,
+            type_of_list_element=get_type_of_element_of_container_types(t, container_types=(list, tuple)),
+            is_specless_type=type_hint is t,
+        )
 
     @property
     def choices(self) -> Optional[Tuple[object, ...]]:
         """Extract choices from Literal types."""
-        T_origin = get_origin(self.T)
-
-        # Handle ArgumentSpec[List[Literal["A", "B"]]]
-        if (
-            isinstance(T_origin, type)
-            and issubclass(T_origin, (list, tuple))
-            and (args := get_args(self.T))
-            and get_origin(arg := args[0]) is Literal
-            and (literals := get_args(arg))
-        ):
-            return literals
-
-        # Handle ArgumentSpec[Literal["A", "B"]]
-        elif T_origin is Literal and (args := get_args(self.T)):
-            return args
-
-        return None
+        return get_literals(self.T, container_types=(list, tuple))
 
     @property
     def type(self) -> Optional[Type[object]]:
         """Determine the appropriate type for the argument."""
-        if self.element_type is not None:
-            return self.element_type
+        if self.type_of_list_element is not None:
+            return self.type_of_list_element
         if isinstance(self.T, type):
             return self.T
         return None
@@ -193,14 +162,12 @@ class ArgumentSpecType(NamedTuple):
     @property
     def should_return_as_list(self) -> bool:
         """Determines if the argument should be returned as a list."""
-        T_origin = get_origin(self.T)
-        return isinstance(T_origin, type) and issubclass(T_origin, list)
+        return get_arguments_of_container_types(self.T, container_types=(list,)) is not None
 
     @property
     def should_return_as_tuple(self) -> bool:
         """Determines if the argument should be returned as a tuple."""
-        T_origin = get_origin(self.T)
-        return isinstance(T_origin, type) and issubclass(T_origin, tuple)
+        return get_arguments_of_container_types(self.T, container_types=(tuple,)) is not None
 
     @property
     def tuple_nargs(self) -> Optional[Union[int, Literal["+"]]]:
@@ -211,6 +178,20 @@ class ArgumentSpecType(NamedTuple):
             else:
                 return "+"
         return None
+
+    @property
+    def basic_info(self) -> dict[str, object]:
+        """Returns a dictionary with basic information about the argument."""
+        return {
+            "T": self.T,
+            "element_type": self.type_of_list_element,
+            "is_specless_type": self.is_specless_type,
+            "choices": self.choices,
+            "type": self.type,
+            "should_return_as_list": self.should_return_as_list,
+            "should_return_as_tuple": self.should_return_as_tuple,
+            "tuple_nargs": self.tuple_nargs,
+        }
 
 
 @dataclass
@@ -336,13 +317,12 @@ class BaseArguments:
                     else:
                         val = (val,)
             spec.value = val
-            if spec_type.is_bare_type:
+            if spec_type.is_specless_type:
                 setattr(cls, key, val)
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         cls.__arguments__ = {}
-        cls.__argspectype__ = {}
         cls.__subcommands__ = {}
 
         for current_cls in reversed(cls.__mro__):
@@ -364,12 +344,33 @@ class BaseArguments:
                 if isinstance(attr_value, ArgumentSpec):
                     spec = cast(ArgumentSpec[object], attr_value)
                 else:
+                    action: Optional[Action] = None
+                    type: Optional[Callable[[str], object]] = None
+                    if attr_hint is bool:
+                        if attr_value is False:
+                            # If the default is False, we want to set action to store_true
+                            action = "store_true"
+                        elif attr_value is True:
+                            # If the default is True, we want to set action to store_false
+                            action = "store_false"
+                        else:
+                            # If the default is None, we want to get explicit boolean value
+                            def get_boolean(x: str) -> bool:
+                                if x.lower() in ("true", "1", "yes"):
+                                    return True
+                                elif x.lower() in ("false", "0", "no"):
+                                    return False
+                                raise argparse.ArgumentTypeError(f"Invalid boolean value: {x}")
+
+                            type = get_boolean
+
                     spec: ArgumentSpec[object] = ArgumentSpec(
                         name_or_flags=[sanitize_name(attr_name)],
                         default=attr_value,
                         required=attr_value is None and not is_optional(attr_hint),
                         help=docstrings.get(attr_name, ""),
-                        action="store_true" if attr_hint is bool else None,
+                        action=action,
+                        type=type,
                     )
 
                 if attr_name in cls.__arguments__:
@@ -387,6 +388,7 @@ class BaseArguments:
                         spec.nargs = "*"
                     cls.__arguments__[attr_name] = (spec, spec_type)
                 except Exception as e:
+                    print_exc()
                     warnings.warn(f"Error processing {attr_name} in {current_cls.__name__}: {e}", UserWarning)
                     continue
 
@@ -471,6 +473,59 @@ def sanitize_name(name: str) -> str:
 def is_optional(t: object) -> bool:
     """Check if a type is Optional."""
     return get_origin(t) is Union and len(args := get_args(t)) == 2 and type(None) in args
+
+
+def ensure_no_optional(t: object) -> object:
+    if get_origin(t) is Union and len(t_args := get_args(t)) == 2 and type(None) in t_args:
+        return next(arg for arg in t_args if arg is not type(None))
+    else:
+        return t
+
+
+def unwrap_argument_spec(t: object) -> object:
+    if (
+        (origin := get_origin(t)) is not None
+        and isinstance(origin, type)
+        and issubclass(origin, ArgumentSpec)
+        and (args := get_args(t))
+    ):
+        # Extract T from ArgumentSpec[T]
+        return args[0]
+    return t
+
+
+def get_arguments_of_container_types(t: object, container_types: ContainerTypes) -> Optional[tuple[object, ...]]:
+    t_no_optional: object = ensure_no_optional(t)
+    if isinstance(t_no_optional, type) and issubclass(t_no_optional, container_types):
+        return ()
+
+    t_no_optional = cast(object, t_no_optional)
+    t_no_optional_origin: Optional[object] = get_origin(t_no_optional)
+    if isinstance(t_no_optional_origin, type) and issubclass(t_no_optional_origin, container_types):
+        return get_args(t_no_optional)
+    return None
+
+
+def get_type_of_element_of_container_types(t: object, container_types: ContainerTypes) -> Optional[type]:
+    if (iterable_arguments := get_arguments_of_container_types(t, container_types=container_types)) and isinstance(
+        first_iterable_argument := iterable_arguments[0], type
+    ):
+        return first_iterable_argument  # Extract E from List[E] or Tuple[E, ...]
+    return None
+
+
+def get_literals(t: object, container_types: ContainerTypes) -> Optional[Tuple[object, ...]]:
+    """Get the literals of the list element type."""
+    t_no_optional: object = ensure_no_optional(t)
+    if get_origin(t_no_optional) is Literal:
+        # Extract literals from Literal type
+        return get_args(t_no_optional)
+    elif (
+        arguments_of_container_types := get_arguments_of_container_types(t, container_types=container_types)
+    ) and get_origin(first_argument_of_container_types := arguments_of_container_types[0]) is Literal:
+        # Extract literals from List[Literal] or Tuple[Literal, ...]
+        return get_args(first_argument_of_container_types)
+    return None
 
 
 def extract_attr_docstrings(cls: Type[object]) -> Dict[str, str]:

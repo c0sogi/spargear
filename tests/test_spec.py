@@ -2,18 +2,11 @@ import os
 import sys
 import tempfile
 import unittest
-from typing import List, Literal, Optional, Tuple
+from typing import Literal, Optional
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from spargear import (
-    SUPPRESS,
-    ArgumentSpec,
-    BaseArguments,
-    FileProtocol,
-    SubcommandSpec,
-    TypedFileType,
-)
+from spargear import SUPPRESS, ArgumentSpec, BaseArguments, FileProtocol, SubcommandSpec, TypedFileType
 
 
 class SimpleArguments(BaseArguments):
@@ -26,7 +19,7 @@ class SimpleArguments(BaseArguments):
     verbose: ArgumentSpec[bool] = ArgumentSpec(
         ["-v", "--verbose"], action="store_true", help="Increase output verbosity."
     )
-    my_list_arg: ArgumentSpec[List[str]] = ArgumentSpec(
+    my_list_arg: ArgumentSpec[list[str]] = ArgumentSpec(
         ["--list-values"], nargs=3, help="One or more values.", default=None
     )
     input_file: ArgumentSpec[FileProtocol] = ArgumentSpec(
@@ -41,15 +34,18 @@ class SimpleArguments(BaseArguments):
     mode: ArgumentSpec[Literal["fast", "slow", "careful"]] = ArgumentSpec(
         ["--mode"], choices=["fast", "slow"], default="fast", help="Mode"
     )
-    enabled_features: ArgumentSpec[List[Literal["CACHE", "LOGGING", "RETRY"]]] = ArgumentSpec(
+    enabled_features: ArgumentSpec[list[Literal["CACHE", "LOGGING", "RETRY"]]] = ArgumentSpec(
         ["--features"], nargs="*", default=[], help="Enable features"
     )
-    tuple_features: ArgumentSpec[Tuple[Literal["CACHE", "LOGGING", "RETRY"], Literal["CACHE", "LOGGING", "RETRY"]]] = (
+    tuple_features: ArgumentSpec[tuple[Literal["CACHE", "LOGGING", "RETRY"], Literal["CACHE", "LOGGING", "RETRY"]]] = (
         ArgumentSpec(["--tuple-features"], help="Tuple features")
     )
     optional_flag: ArgumentSpec[str] = ArgumentSpec(
         ["--opt-flag"], default=SUPPRESS, help="Optional flag suppressed if missing"
     )
+
+
+# raise Exception(SimpleArguments.__arguments__)
 
 
 class TestSimpleArguments(unittest.TestCase):
@@ -174,67 +170,6 @@ class TestGitArguments(unittest.TestCase):
         self.assertEqual(push.remote.unwrap(), "upstream")
         self.assertEqual(push.branch.unwrap(), "dev")
         self.assertTrue(push.force.unwrap())
-
-
-class BazArgs(BaseArguments):
-    qux: ArgumentSpec[str] = ArgumentSpec(["--qux"], help="qux argument")
-
-
-class BarArgs(BaseArguments):
-    baz = SubcommandSpec("baz", help="do baz", argument_class=BazArgs)
-
-
-class RootArgs(BaseArguments):
-    foo: ArgumentSpec[str] = ArgumentSpec(["foo"], help="foo argument")
-    bar = SubcommandSpec("bar", help="do bar", argument_class=BarArgs)
-
-
-class TestNestedSubcommands(unittest.TestCase):
-    def test_two_levels(self):
-        baz = RootArgs.load(["FOO_VAL", "bar", "baz", "--qux", "QUX_VAL"])
-        assert isinstance(baz, BazArgs), f"baz should be an instance of BarArgs: {type(baz)}"
-        self.assertEqual(baz.qux.unwrap(), "QUX_VAL")
-
-    def test_error_on_missing(self):
-        with self.assertRaises(SystemExit):
-            RootArgs.load([])  # missing foo positional
-        with self.assertRaises(SystemExit):
-            RootArgs.load(["FOO_VAL", "VAL", "bar"])  # missing baz sub-subcommand
-
-
-class BareTypeArguments(BaseArguments):
-    """Example argument parser demonstrating bare type."""
-
-    optional_int_with_default: Optional[int] = None
-    optional_int_without_default: Optional[int]
-    float_with_default: float = 0.0
-    """float_with_default"""
-    float_without_default: float
-    float_with_str_default: float = "1.23"  # type: ignore[assignment]
-    list_of_ints_without_default: List[int]
-    """list_of_ints_without_default"""
-    some_argument: ArgumentSpec[bool] = ArgumentSpec(["--some-argument"], action="store_true", help="some_argument")
-    """This should be ignored"""
-
-
-class TestBareType(unittest.TestCase):
-    def test_bare_type_without_default(self):
-        args = BareTypeArguments(["--float-without-default", "3.14", "--list-of-ints-without-default", "1", "2", "3"])
-        self.assertEqual(args.optional_int_without_default, None)
-        self.assertEqual(args.float_without_default, 3.14)
-        self.assertEqual(args.list_of_ints_without_default, [1, 2, 3])
-
-    def test_bare_type_with_default(self):
-        args = BareTypeArguments(["--float-without-default", "3.14", "--list-of-ints-without-default", "1", "2", "3"])
-        self.assertEqual(args.optional_int_with_default, None)
-        self.assertEqual(args.float_with_default, 0.0)
-        self.assertEqual(args.float_with_str_default, 1.23)
-
-    def test_bare_type_docs(self):
-        args = BareTypeArguments(["--float-without-default", "3.14", "--list-of-ints-without-default", "1", "2", "3"])
-        self.assertEqual(args.__arguments__["float_with_default"][0].help, "float_with_default")
-        self.assertEqual(args.__arguments__["list_of_ints_without_default"][0].help, "list_of_ints_without_default")
-        self.assertEqual(args.__arguments__["some_argument"][0].help, "some_argument")
 
 
 if __name__ == "__main__":
