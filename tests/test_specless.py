@@ -1,7 +1,7 @@
 import os
 import sys
 import unittest
-from typing import Optional
+from typing import List, Optional, Tuple
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -17,7 +17,7 @@ class SpeclessBasicArguments(BaseArguments):
     """float_with_default"""
     float_without_default: float
     float_with_str_default: float = "1.23"  # type: ignore[assignment]
-    list_of_ints_without_default: list[int]
+    list_of_ints_without_default: List[int]
     """list_of_ints_without_default"""
     some_argument: ArgumentSpec[bool] = ArgumentSpec(["--some-argument"], action="store_true", help="some_argument")
     """This should be ignored"""
@@ -121,9 +121,9 @@ class TestSpeclessTupleAndLists(unittest.TestCase):
         class SpeclessTupleAndLists(BaseArguments):
             """Example argument parser demonstrating specless tuple and list arguments."""
 
-            tuple_of_ints: tuple[int, int]
+            tuple_of_ints: Tuple[int, int]
             """tuple_of_ints"""
-            list_of_ints_without_default: list[int]
+            list_of_ints_without_default: List[int]
             """list_of_ints_without_default"""
 
         with self.assertRaises(SystemExit):
@@ -141,7 +141,7 @@ class TestSpeclessTupleAndLists(unittest.TestCase):
 
     def test_basic_things2(self):
         class SpeclessTupleAndLists(BaseArguments):
-            list_of_ints_with_default: list[int] = [1, 2, 3]
+            list_of_ints_with_default: List[int] = [1, 2, 3]
             """list_of_ints_with_default"""
 
         args2 = SpeclessTupleAndLists([])
@@ -151,7 +151,7 @@ class TestSpeclessTupleAndLists(unittest.TestCase):
 
     def test_basic_things3(self):
         class SpeclessTupleAndLists(BaseArguments):
-            optional_list_of_ints_with_default: Optional[list[int]] = None
+            optional_list_of_ints_with_default: Optional[List[int]] = None
             """optional_list_of_ints_with_default"""
 
         args3 = SpeclessTupleAndLists([])
@@ -161,7 +161,7 @@ class TestSpeclessTupleAndLists(unittest.TestCase):
 
     def test_basic_things4(self):
         class SpeclessTupleAndLists(BaseArguments):
-            optional_list_of_ints_without_default: Optional[list[int]]
+            optional_list_of_ints_without_default: Optional[List[int]]
             """optional_list_of_ints_without_default"""
 
         args4 = SpeclessTupleAndLists([])

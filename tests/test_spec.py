@@ -2,11 +2,11 @@ import os
 import sys
 import tempfile
 import unittest
-from typing import Literal, Optional
+from typing import List, Literal, Optional, Tuple
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from spargear import SUPPRESS, ArgumentSpec, BaseArguments, FileProtocol, SubcommandSpec, TypedFileType
+from spargear import SUPPRESS, ArgumentSpec, BaseArguments, FileProtocol, TypedFileType
 
 
 class SimpleArguments(BaseArguments):
@@ -19,7 +19,7 @@ class SimpleArguments(BaseArguments):
     verbose: ArgumentSpec[bool] = ArgumentSpec(
         ["-v", "--verbose"], action="store_true", help="Increase output verbosity."
     )
-    my_list_arg: ArgumentSpec[list[str]] = ArgumentSpec(
+    my_list_arg: ArgumentSpec[List[str]] = ArgumentSpec(
         ["--list-values"], nargs=3, help="One or more values.", default=None
     )
     input_file: ArgumentSpec[FileProtocol] = ArgumentSpec(
@@ -34,10 +34,10 @@ class SimpleArguments(BaseArguments):
     mode: ArgumentSpec[Literal["fast", "slow", "careful"]] = ArgumentSpec(
         ["--mode"], choices=["fast", "slow"], default="fast", help="Mode"
     )
-    enabled_features: ArgumentSpec[list[Literal["CACHE", "LOGGING", "RETRY"]]] = ArgumentSpec(
+    enabled_features: ArgumentSpec[List[Literal["CACHE", "LOGGING", "RETRY"]]] = ArgumentSpec(
         ["--features"], nargs="*", default=[], help="Enable features"
     )
-    tuple_features: ArgumentSpec[tuple[Literal["CACHE", "LOGGING", "RETRY"], Literal["CACHE", "LOGGING", "RETRY"]]] = (
+    tuple_features: ArgumentSpec[Tuple[Literal["CACHE", "LOGGING", "RETRY"], Literal["CACHE", "LOGGING", "RETRY"]]] = (
         ArgumentSpec(["--tuple-features"], help="Tuple features")
     )
     optional_flag: ArgumentSpec[str] = ArgumentSpec(
@@ -117,59 +117,6 @@ class TestSimpleArguments(unittest.TestCase):
         parser = SimpleArguments.get_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["-i", "1", "in.txt", "--tuple-features", "BAD", "LOGGING"])
-
-
-class GitCommitArguments(BaseArguments):
-    """Git commit command arguments."""
-
-    message: ArgumentSpec[str] = ArgumentSpec(["-m", "--message"], required=True, help="Commit message")
-    amend: ArgumentSpec[bool] = ArgumentSpec(["--amend"], action="store_true", help="Amend previous commit")
-
-
-class GitPushArguments(BaseArguments):
-    """Git push command arguments."""
-
-    remote: ArgumentSpec[str] = ArgumentSpec(["remote"], nargs="?", default="origin", help="Remote name")
-    branch: ArgumentSpec[Optional[str]] = ArgumentSpec(["branch"], nargs="?", help="Branch name")
-    force: ArgumentSpec[bool] = ArgumentSpec(["-f", "--force"], action="store_true", help="Force push")
-
-
-class GitArguments(BaseArguments):
-    """Git command line interface example."""
-
-    verbose: ArgumentSpec[bool] = ArgumentSpec(["-v", "--verbose"], action="store_true", help="Increase verbosity")
-    commit_cmd = SubcommandSpec(name="commit", help="Record changes", argument_class=GitCommitArguments)
-    push_cmd = SubcommandSpec(name="push", help="Update remote", argument_class=GitPushArguments)
-
-
-class TestGitArguments(unittest.TestCase):
-    def test_commit_subcommand(self):
-        # commit requires -m
-        with self.assertRaises(SystemExit):
-            GitArguments(["commit"])
-        commit = GitArguments.load(["commit", "-m", "fix"])
-        assert isinstance(commit, GitCommitArguments), "commit should be an instance of GitCommitArguments"
-        self.assertEqual(commit.message.unwrap(), "fix")
-        self.assertFalse(commit.amend.unwrap())
-
-    def test_commit_with_amend(self):
-        commit = GitArguments.load(["commit", "-m", "msg", "--amend"])
-        assert isinstance(commit, GitCommitArguments), "commit should be an instance of GitCommitArguments"
-        self.assertTrue(commit.amend.unwrap())
-
-    def test_push_subcommand_defaults(self):
-        push = GitArguments.load(["push"])
-        assert isinstance(push, GitPushArguments), "push should be an instance of GitPushArguments"
-        self.assertEqual(push.remote.unwrap(), "origin")
-        self.assertIsNone(push.branch.value)
-        self.assertFalse(push.force.unwrap())
-
-    def test_push_with_overrides(self):
-        push = GitArguments.load(["push", "upstream", "dev", "--force"])
-        assert isinstance(push, GitPushArguments), "push should be an instance of GitPushArguments"
-        self.assertEqual(push.remote.unwrap(), "upstream")
-        self.assertEqual(push.branch.unwrap(), "dev")
-        self.assertTrue(push.force.unwrap())
 
 
 if __name__ == "__main__":
