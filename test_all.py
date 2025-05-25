@@ -1,25 +1,33 @@
-# ruff: noqa: F403
-import subprocess
 from os import environ
+from pathlib import Path
 
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+RESET = "\033[0m"
+
+TESTS_DIR = "tests"
 LOWEST_SUPPORT_PYTHON_VERSION = "3.8"
 HIGHEST_SUPPORT_PYTHON_VERSION = "3.12"
 
-if environ.get("SPARGEAR_TEST_SUBPROCESS") == "1":
+if version := environ.get("SPARGEAR_TEST_PYTHON_VERSION"):
     import sys
+
+    VERSION = " ".join(sys.version.splitlines())
+    assert version in VERSION, f"Python version {version} is not supported"
+
+    # ruff: noqa: F403
+    for test in (Path(__file__).parent / TESTS_DIR).glob("test_*.py"):
+        from_str = f"from {TESTS_DIR}.{test.stem} import *"
+        print(from_str)
+        exec(from_str)
+
+    print(f"{GREEN}[*] Running tests ... {YELLOW}{VERSION}{RESET}")
     import unittest
 
-    from tests.test_spec import *
-    from tests.test_specless import *
-    from tests.test_subcommands import *
-
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    RESET = "\033[0m"
-    print(f"{GREEN}[*] Running tests ... {YELLOW}{' '.join(sys.version.splitlines())}{RESET}")
     unittest.main()
 
 else:
+    import subprocess
 
     def is_uv_available() -> bool:
         try:
@@ -33,23 +41,22 @@ else:
         except subprocess.CalledProcessError:
             return False
 
-    def install_uv() -> None:
-        try:
-            subprocess.run(
-                ["pip", "install", "uv"],
-                check=True,
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to install uv: {e}")
-            exit(1)
-
     if not is_uv_available():
-        print("uv is not installed. Installing uv...")
+
+        def install_uv() -> None:
+            subprocess.run(["pip", "install", "uv"], check=True)
+
         install_uv()
 
     for python_version in (LOWEST_SUPPORT_PYTHON_VERSION, HIGHEST_SUPPORT_PYTHON_VERSION):
         subprocess.run(
             ["uv", "run", "--python", python_version, __file__],
             check=True,
-            env={**environ, "SPARGEAR_TEST_SUBPROCESS": "1"},
+            env={
+                **environ,
+                "UV_PROJECT_ENVIRONMENT": f".venv{python_version}",  # e.g. ".venv3.8", ".venv3.12"
+                "SPARGEAR_TEST_PYTHON_VERSION": python_version,
+            },
         )
+
+    print(f"{GREEN}[*] All tests passed{RESET}")
