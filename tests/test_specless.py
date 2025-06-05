@@ -1,9 +1,5 @@
-import os
-import sys
 import unittest
 from typing import List, Optional, Tuple
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from spargear import ArgumentSpec, BaseArguments
 
@@ -24,20 +20,7 @@ class SpeclessBasicArguments(BaseArguments):
 
 
 class TestSpeclessBasic(unittest.TestCase):
-    def test_specless_type_without_default(self):
-        args = SpeclessBasicArguments([
-            "--float-without-default",
-            "3.14",
-            "--list-of-ints-without-default",
-            "1",
-            "2",
-            "3",
-        ])
-        self.assertEqual(args.optional_int_without_default, None)
-        self.assertEqual(args.float_without_default, 3.14)
-        self.assertEqual(args.list_of_ints_without_default, [1, 2, 3])
-
-    def test_specless_type_with_default(self):
+    def test_specless_type_no_optional(self):
         args = SpeclessBasicArguments([
             "--float-without-default",
             "3.14",
@@ -47,8 +30,27 @@ class TestSpeclessBasic(unittest.TestCase):
             "3",
         ])
         self.assertEqual(args.optional_int_with_default, None)
+        self.assertEqual(args.optional_int_without_default, None)
         self.assertEqual(args.float_with_default, 0.0)
+        self.assertEqual(args.float_without_default, 3.14)
         self.assertEqual(args.float_with_str_default, 1.23)
+        self.assertEqual(args.list_of_ints_without_default, [1, 2, 3])
+
+    def test_specless_type_optional(self):
+        args = SpeclessBasicArguments([
+            "--optional-int-with-default",
+            "3",
+            "--optional-int-without-default",
+            "4",
+            "--float-without-default",
+            "3.14",
+            "--list-of-ints-without-default",
+            "1",
+            "2",
+            "3",
+        ])
+        self.assertEqual(args.optional_int_with_default, 3)
+        self.assertEqual(args.optional_int_without_default, 4)
 
     def test_specless_type_docs(self):
         args = SpeclessBasicArguments([

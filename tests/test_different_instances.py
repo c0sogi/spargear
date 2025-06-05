@@ -4,7 +4,7 @@
 import datetime
 import uuid
 from typing import Union, Callable
-from spargear import BaseArguments, ArgumentSpec
+from spargear.base_arguments import BaseArguments, ArgumentSpec
 
 
 class TestArguments(BaseArguments):
@@ -15,7 +15,11 @@ class TestArguments(BaseArguments):
     """Unique session ID (generated at parse time)"""
 
     # Explicit ArgumentSpec with default_factory
-    timestamp: ArgumentSpec[str] = ArgumentSpec(name_or_flags=["--timestamp"], default_factory=lambda: datetime.datetime.now().isoformat(), help="Current timestamp (auto-generated)")
+    timestamp: ArgumentSpec[str] = ArgumentSpec(
+        name_or_flags=["--timestamp"],
+        default_factory=lambda: datetime.datetime.now().isoformat(),
+        help="Current timestamp (auto-generated)",
+    )
 
 
 def test_different_instances() -> None:

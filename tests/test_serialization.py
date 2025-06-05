@@ -4,7 +4,7 @@
 import os
 import tempfile
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from spargear import ArgumentSpec, BaseArguments
 
@@ -31,10 +31,17 @@ class ConfigExample(BaseArguments):
     """List of allowed hosts"""
 
     # ArgumentSpec with default factory
-    session_id: ArgumentSpec[str] = ArgumentSpec(name_or_flags=["--session-id"], default_factory=lambda: str(uuid.uuid4()), help="Unique session identifier")
+    session_id: ArgumentSpec[str] = ArgumentSpec(
+        name_or_flags=["--session-id"], default_factory=lambda: str(uuid.uuid4()), help="Unique session identifier"
+    )
 
     # ArgumentSpec with regular default
-    log_level: ArgumentSpec[str] = ArgumentSpec(name_or_flags=["--log-level"], choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO", help="Logging level")
+    log_level: ArgumentSpec[str] = ArgumentSpec(
+        name_or_flags=["--log-level"],
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Logging level",
+    )
 
 
 def test_dataclass_conversion() -> None:
@@ -139,7 +146,7 @@ def test_update_functionality() -> None:
     print(f"  port: {config.port}")
 
     # Update from dictionary
-    updates = {"name": "updated_app", "port": 5000, "debug": True}
+    updates: Dict[str, object] = {"name": "updated_app", "port": 5000, "debug": True}
     config.update_from_dict(updates)
 
     print("After update:")
@@ -154,7 +161,7 @@ def test_command_line_override() -> None:
     print("=== Testing Command Line Override ===")
 
     # Create config data
-    config_data = {"name": "config_app", "port": 4000, "debug": False}
+    config_data: Dict[str, object] = {"name": "config_app", "port": 4000, "debug": False}
 
     # Create instance with command line args that override config
     config = ConfigExample.from_dict(config_data, args=["--port", "6000", "--debug"])

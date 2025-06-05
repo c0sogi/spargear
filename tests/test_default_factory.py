@@ -24,7 +24,9 @@ class MyArguments(BaseArguments):
 
     # Explicit ArgumentSpec with default_factory
     log_file: ArgumentSpec[str] = ArgumentSpec(
-        name_or_flags=["--log-file"], default_factory=lambda: f"log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt", help="Log file name (auto-generated with timestamp)"
+        name_or_flags=["--log-file"],
+        default_factory=lambda: f"log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        help="Log file name (auto-generated with timestamp)",
     )
 
     # Optional argument with no default

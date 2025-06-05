@@ -1,12 +1,9 @@
 import os
-import sys
 import tempfile
 import unittest
 from typing import List, Literal, Optional, Tuple
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from spargear import SUPPRESS, ArgumentSpec, BaseArguments, FileProtocol, TypedFileType
+from spargear import SUPPRESS, FileProtocol, TypedFileType, ArgumentSpec, BaseArguments
 
 
 class SimpleArguments(BaseArguments):
