@@ -18,7 +18,6 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
-    Type,
     Union,
     cast,
 )
@@ -35,10 +34,9 @@ class BaseArguments:
 
     __arguments__: Dict[str, Tuple[ArgumentSpec[object], ArgumentSpecType]]
     __subcommands__: Dict[str, SubcommandSpec["BaseArguments"]]
-    __parent__: Optional[Type["BaseArguments"]] = None
     last_subcommand: Optional["BaseArguments"] = None
 
-    def __init__(self, args: Optional[Sequence[str]] = None) -> None:
+    def __init__(self, args: Optional[Sequence[str]] = None, _internal_init: bool = False) -> None:
         """
         Initializes the BaseArguments instance and loads arguments from the command line or a given list of arguments.
         If no arguments are provided, it uses sys.argv[1:] by default.
@@ -47,8 +45,8 @@ class BaseArguments:
         self.__instance_values__: Dict[str, object] = {}
         self.__instance_specs__: Dict[str, ArgumentSpec[object]] = {}
 
-        # only load at root
-        if self.__class__.__parent__ is None:
+        # only load at root (내부 생성이 아닌 경우)
+        if not _internal_init:
             cls = self.__class__
             parser = cls.get_parser()
             try:
@@ -62,12 +60,13 @@ class BaseArguments:
             # now walk down through any subcommands
             current_cls = cls
             current_inst: Optional["BaseArguments"] = None
+            depth = 0
             while current_cls._has_subcommands():
-                # top‐level uses 'subcommand', deeper levels use '<classname>_subcommand'
-                if current_cls.__parent__ is None:
+                # 각 레벨에 맞는 dest 이름 사용
+                if depth == 0:
                     dest_name = "subcommand"
                 else:
-                    dest_name = f"{current_cls.__name__.lower()}_subcommand"
+                    dest_name = f"subcommand_depth_{depth}"
 
                 subname = getattr(parsed_args, dest_name, None)
                 if not subname:
@@ -77,16 +76,13 @@ class BaseArguments:
                 if not subc or not subc.argument_class:
                     break
 
-                # Create subcommand instance without parsing
-                inst = object.__new__(subc.argument_class)
-                # Initialize instance attributes
-                inst.__instance_values__ = {}
-                inst.__instance_specs__ = {}
-                inst.last_subcommand = None
+                # Create subcommand instance with internal flag
+                inst = subc.argument_class(args=None, _internal_init=True)
                 # Load values from parsed args
                 inst.load_from_namespace(parsed_args)
                 current_inst = inst
                 current_cls = subc.argument_class
+                depth += 1
             self.last_subcommand = current_inst
 
     def __getitem__(self, key: str) -> Optional[object]:
@@ -272,11 +268,7 @@ class BaseArguments:
                     spec, _ = cls.__arguments__[key]
 
                     # Set from dict if: not in instance values, is None, or is still the default value
-                    if (
-                        key not in instance.__instance_values__
-                        or instance.__instance_values__[key] is None
-                        or instance.__instance_values__[key] == spec.default
-                    ):
+                    if key not in instance.__instance_values__ or instance.__instance_values__[key] is None or instance.__instance_values__[key] == spec.default:
                         instance.__instance_values__[key] = value
                         # Also update instance specs if they exist
                         if hasattr(instance, "__instance_specs__") and key in instance.__instance_specs__:
@@ -390,9 +382,7 @@ class BaseArguments:
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             add_help=False,
         )
-        arg_parser.add_argument(
-            "-h", "--help", action="help", default=argparse.SUPPRESS, help="Show this help message and exit."
-        )
+        arg_parser.add_argument("-h", "--help", action="help", default=argparse.SUPPRESS, help="Show this help message and exit.")
         cls._configure_parser(arg_parser)
         return arg_parser
 
@@ -461,8 +451,6 @@ class BaseArguments:
                 if isinstance(attr_value, SubcommandSpec):
                     attr_value = cast(SubcommandSpec["BaseArguments"], attr_value)
                     cls.__subcommands__[attr_value.name] = attr_value
-                    if attr_value.argument_class:
-                        attr_value.argument_class.__parent__ = cls
 
             # ArgumentSpecs
             docstrings = extract_attr_docstrings(current_cls)
@@ -543,13 +531,11 @@ class BaseArguments:
         return bool(cls.__subcommands__)
 
     @classmethod
-    def _add_argument_to_parser(
-        cls, parser: argparse.ArgumentParser, name_or_flags: List[str], **kwargs: object
-    ) -> None:
+    def _add_argument_to_parser(cls, parser: argparse.ArgumentParser, name_or_flags: List[str], **kwargs: object) -> None:
         parser.add_argument(*name_or_flags, **kwargs)  # type: ignore
 
     @classmethod
-    def _configure_parser(cls, parser: argparse.ArgumentParser) -> None:
+    def _configure_parser(cls, parser: argparse.ArgumentParser, _depth: int = 0) -> None:
         # 1) add this class's own arguments
         for key, spec, _ in cls._iter_arguments():
             kwargs = spec.get_add_argument_kwargs()
@@ -563,10 +549,11 @@ class BaseArguments:
 
         # 2) if there are subcommands, add them at this level
         if cls._has_subcommands():
-            if cls.__parent__ is None:
+            # 각 레벨에 고유한 dest 이름 사용
+            if _depth == 0:
                 dest_name = "subcommand"
             else:
-                dest_name = f"{cls.__name__.lower()}_subcommand"
+                dest_name = f"subcommand_depth_{_depth}"
 
             subparsers = parser.add_subparsers(
                 title="subcommands",
@@ -581,7 +568,7 @@ class BaseArguments:
                     description=subc.description or subc.help,
                 )
                 if subc.argument_class:
-                    subc.argument_class._configure_parser(subparser)
+                    subc.argument_class._configure_parser(subparser, _depth + 1)
 
 
 def _get_type_hints(obj: object) -> Iterator[Tuple[str, object]]:
