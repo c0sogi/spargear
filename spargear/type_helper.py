@@ -1,13 +1,29 @@
 import ast
 import inspect
 import logging
+import sys
 import textwrap
+import types
 import typing as tp
 from typing import Dict, Literal, Optional, Tuple, Type, Union, cast
 
 from ._typing import ContainerTypes
 
 logger = logging.getLogger(__name__)
+
+
+def get_union_args(t: object) -> Tuple[object, ...]:
+    origin = get_origin(t)
+    if origin is Union:
+        return get_args(t)
+    if sys.version_info >= (3, 10) and origin is types.UnionType:
+        return get_args(t)
+    return ()
+
+
+def is_optional(t: object) -> bool:
+    """Check if a type is Optional."""
+    return type(None) in get_union_args(t)
 
 
 def get_origin(obj: object) -> Optional[object]:
@@ -28,40 +44,29 @@ def sanitize_name(name: str) -> str:
     return "--" + name.replace("_", "-").lower().lstrip("-")
 
 
-def is_optional(t: object) -> bool:
-    """Check if a type is Optional."""
-    return get_origin(t) is Union and type(None) in get_args(t)
-
-
 def ensure_no_optional(t: object) -> object:
     """Ensure that the type is not Optional."""
-    if get_origin(t) is Union and type(None) in (t_args := get_args(t)):
-        return Union[tuple(arg for arg in t_args if arg is not type(None))]
-    else:
+    non_none_args = tuple(arg for arg in get_union_args(t) if arg is not type(None))
+    if not non_none_args:
         return t
+    if len(non_none_args) == 1:
+        return non_none_args[0]
+    return Union[non_none_args]  # pyright: ignore[reportInvalidTypeArguments]
 
 
-def get_arguments_of_container_types(
-    type_no_optional_or_spec: object, container_types: ContainerTypes
-) -> Optional[Tuple[object, ...]]:
+def get_arguments_of_container_types(type_no_optional_or_spec: object, container_types: ContainerTypes) -> Optional[Tuple[object, ...]]:
     if isinstance(type_no_optional_or_spec, type) and issubclass(type_no_optional_or_spec, container_types):
         return ()
 
     type_no_optional_or_spec = cast(object, type_no_optional_or_spec)
     type_no_optional_or_spec_origin: Optional[object] = get_origin(type_no_optional_or_spec)
-    if isinstance(type_no_optional_or_spec_origin, type) and issubclass(
-        type_no_optional_or_spec_origin, container_types
-    ):
+    if isinstance(type_no_optional_or_spec_origin, type) and issubclass(type_no_optional_or_spec_origin, container_types):
         return get_args(type_no_optional_or_spec)
     return None
 
 
-def get_type_of_element_of_container_types(
-    type_no_optional_or_spec: object, container_types: ContainerTypes
-) -> Optional[type]:
-    iterable_arguments = get_arguments_of_container_types(
-        type_no_optional_or_spec=type_no_optional_or_spec, container_types=container_types
-    )
+def get_type_of_element_of_container_types(type_no_optional_or_spec: object, container_types: ContainerTypes) -> Optional[type]:
+    iterable_arguments = get_arguments_of_container_types(type_no_optional_or_spec=type_no_optional_or_spec, container_types=container_types)
     if iterable_arguments is None:
         return None
     else:
@@ -74,11 +79,9 @@ def get_literals(type_no_optional_or_spec: object, container_types: ContainerTyp
         # Extract literals from Literal type
         return get_args(type_no_optional_or_spec)
 
-    elif (
-        arguments_of_container_types := get_arguments_of_container_types(
-            type_no_optional_or_spec=type_no_optional_or_spec, container_types=container_types
-        )
-    ) and get_origin(first_argument_of_container_types := arguments_of_container_types[0]) is Literal:
+    elif (arguments_of_container_types := get_arguments_of_container_types(type_no_optional_or_spec=type_no_optional_or_spec, container_types=container_types)) and get_origin(
+        first_argument_of_container_types := arguments_of_container_types[0]
+    ) is Literal:
         # Extract literals from List[Literal] or Tuple[Literal, ...]
         return get_args(first_argument_of_container_types)
     return None

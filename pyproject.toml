@@ -9,3 +9,6 @@ dependencies = []
 
 [project.urls]
 repository = "https://github.com/c0sogi/spargear"
+
+[project.optional-dependencies]
+dev = ["pyright>=1.1.401"]
