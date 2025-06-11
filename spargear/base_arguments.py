@@ -73,15 +73,20 @@ class BaseArguments:
                     break
 
                 subc = current_cls.__subcommands__.get(subname)
-                if not subc or not subc.argument_class:
+                if not subc:
+                    break
+
+                try:
+                    argument_class = subc.get_argument_class()
+                except Exception:
                     break
 
                 # Create subcommand instance with internal flag
-                inst = subc.argument_class(args=None, _internal_init=True)
+                inst = argument_class(args=None, _internal_init=True)
                 # Load values from parsed args
                 inst.load_from_namespace(parsed_args)
                 current_inst = inst
-                current_cls = subc.argument_class
+                current_cls = argument_class
                 depth += 1
             self.last_subcommand = current_inst
 
@@ -503,7 +508,6 @@ class BaseArguments:
 
                 try:
                     spec_type: ArgumentSpecType = ArgumentSpecType.from_type_hint(attr_hint)
-                    print(attr_name, spec_type.type)
                     if literals := spec_type.choices:
                         spec.choices = literals
                     if spec.type is None and (th := spec_type.type):
@@ -567,8 +571,12 @@ class BaseArguments:
                     help=subc.help,
                     description=subc.description or subc.help,
                 )
-                if subc.argument_class:
-                    subc.argument_class._configure_parser(subparser, _depth + 1)
+                try:
+                    argument_class = subc.get_argument_class()
+                    argument_class._configure_parser(subparser, _depth + 1)
+                except Exception:
+                    # If getting the argument class fails, skip this subcommand configuration
+                    pass
 
 
 def _get_type_hints(obj: object) -> Iterator[Tuple[str, object]]:
