@@ -4,6 +4,7 @@ import json
 import pickle
 import typing as tp
 import warnings
+from copy import deepcopy
 from dataclasses import field, make_dataclass
 from pathlib import Path
 from traceback import print_exc
@@ -34,7 +35,11 @@ class BaseArguments:
 
     __arguments__: Dict[str, Tuple[ArgumentSpec[object], ArgumentSpecType]]
     __subcommands__: Dict[str, SubcommandSpec["BaseArguments"]]
-    last_subcommand: Optional["BaseArguments"] = None
+    __subcommand: Optional["BaseArguments"] = None
+
+    @property
+    def last_subcommand(self) -> Optional["BaseArguments"]:
+        return self.__subcommand
 
     def __init__(self, args: Optional[Sequence[str]] = None, _internal_init: bool = False) -> None:
         """
@@ -55,7 +60,7 @@ class BaseArguments:
                 raise
 
             # load this class's own specs
-            self.load_from_namespace(parsed_args)
+            self.__load_from_namespace(parsed_args)
 
             # now walk down through any subcommands
             current_cls = cls
@@ -84,29 +89,14 @@ class BaseArguments:
                 # Create subcommand instance with internal flag
                 inst = argument_class(args=None, _internal_init=True)
                 # Load values from parsed args
-                inst.load_from_namespace(parsed_args)
+                inst.__load_from_namespace(parsed_args)
                 current_inst = inst
                 current_cls = argument_class
                 depth += 1
-            self.last_subcommand = current_inst
+            self.__subcommand = current_inst
 
     def __getitem__(self, key: str) -> Optional[object]:
         return self.__instance_values__.get(key, self.__class__.__arguments__[key][0].value)
-
-    def get(self, key: str) -> Optional[object]:
-        return self.__instance_values__.get(key, self.__class__.__arguments__[key][0].value)
-
-    def keys(self) -> Iterable[str]:
-        yield from (k for k, _v in self.items())
-
-    def values(self) -> Iterable[object]:
-        yield from (v for _k, v in self.items())
-
-    def items(self) -> Iterable[Tuple[str, object]]:
-        for key, spec, _ in self.__class__._iter_arguments():
-            value = self.__instance_values__.get(key, spec.value)
-            if value is not None:
-                yield key, value
 
     def __getattribute__(self, name: str) -> object:
         """Override attribute access to return instance-specific ArgumentSpec objects or values."""
@@ -146,6 +136,100 @@ class BaseArguments:
         # Use normal attribute access for everything else
         return super().__getattribute__(name)
 
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.__arguments__ = {}
+        cls.__subcommands__ = {}
+
+        for current_cls in reversed(cls.__mro__):
+            if current_cls in (object, BaseArguments):
+                continue
+            # Subcommands
+            for attr_value in vars(current_cls).values():
+                if isinstance(attr_value, SubcommandSpec):
+                    attr_value = cast(SubcommandSpec["BaseArguments"], attr_value)
+                    cls.__subcommands__[attr_value.name] = attr_value
+
+            # ArgumentSpecs
+            docstrings = extract_attr_docstrings(current_cls)
+            for attr_name, attr_hint in _get_type_hints(current_cls):
+                attr_value: Optional[object] = getattr(current_cls, attr_name, None)
+                if isinstance(attr_value, ArgumentSpec):
+                    spec = cast(ArgumentSpec[object], attr_value)
+                else:
+                    action: Optional[Action] = None
+                    type: Optional[Callable[[str], object]] = None
+                    if attr_hint is bool:
+                        if attr_value is False:
+                            # If the default is False, we want to set action to store_true
+                            action = "store_true"
+                        elif attr_value is True:
+                            # If the default is True, we want to set action to store_false
+                            action = "store_false"
+                        else:
+                            # If the default is None, we want to get explicit boolean value
+                            def get_boolean(x: str) -> bool:
+                                if x.lower() in ("true", "1", "yes"):
+                                    return True
+                                elif x.lower() in ("false", "0", "no"):
+                                    return False
+                                raise argparse.ArgumentTypeError(f"Invalid boolean value: {x}")
+
+                            type = get_boolean
+
+                            # Check if attr_value is a callable (potential default factory)
+                    default_factory: Optional[Callable[[], object]] = None
+                    default_value: Optional[object] = attr_value
+
+                    # If attr_value is callable and not a type, treat it as default_factory
+                    if callable(attr_value) and not inspect.isclass(attr_value) and attr_value is not type:
+                        default_factory = attr_value
+                        default_value = None
+
+                    spec: ArgumentSpec[object] = ArgumentSpec(
+                        name_or_flags=[sanitize_name(attr_name)],
+                        default=default_value,
+                        default_factory=default_factory,
+                        required=default_value is None and default_factory is None and not is_optional(attr_hint),
+                        help=docstrings.get(attr_name, ""),
+                        action=action,
+                        type=type,
+                    )
+
+                if attr_name in cls.__arguments__:
+                    warnings.warn(f"Duplicate argument name '{attr_name}' in {current_cls.__name__}.", UserWarning)
+
+                try:
+                    spec_type: ArgumentSpecType = ArgumentSpecType.from_type_hint(attr_hint)
+                    if literals := spec_type.choices:
+                        spec.choices = literals
+                    if spec.type is None and (th := spec_type.type):
+                        spec.type = th
+                    if tn := spec_type.tuple_nargs:
+                        spec.nargs = tn
+                    elif spec.nargs is None and spec_type.should_return_as_list or spec_type.should_return_as_tuple:
+                        spec.nargs = "*"
+                    cls.__arguments__[attr_name] = (spec, spec_type)
+                except Exception as e:
+                    print_exc()
+                    warnings.warn(f"Error processing {attr_name} in {current_cls.__name__}: {e}", UserWarning)
+                    continue
+
+    def get(self, key: str) -> Optional[object]:
+        return self.__instance_values__.get(key, self.__class__.__arguments__[key][0].value)
+
+    def keys(self) -> Iterable[str]:
+        yield from (k for k, _v in self.items())
+
+    def values(self) -> Iterable[object]:
+        yield from (v for _k, v in self.items())
+
+    def items(self) -> Iterable[Tuple[str, object]]:
+        for key, spec, _ in self.__class__.__iter_arguments():
+            value = self.__instance_values__.get(key, spec.value)
+            if value is not None:
+                yield key, value
+
     def to_dataclass(self, class_name: Optional[str] = None) -> Any:
         """Convert the BaseArguments instance to a dataclass instance.
 
@@ -162,7 +246,7 @@ class BaseArguments:
         field_definitions: List[Tuple[str, type, Any]] = []
         field_values: Dict[str, Any] = {}
 
-        for key, spec, spec_type in self.__class__._iter_arguments():
+        for key, spec, spec_type in self.__class__.__iter_arguments():
             # Get the value from instance
             if hasattr(self, "__instance_values__") and key in self.__instance_values__:
                 value = self.__instance_values__[key]
@@ -201,7 +285,7 @@ class BaseArguments:
             A dictionary with all argument names and their values.
         """
         result: Dict[str, Any] = {}
-        for key, spec, _ in self.__class__._iter_arguments():
+        for key, spec, _ in self.__class__.__iter_arguments():
             if hasattr(self, "__instance_values__") and key in self.__instance_values__:
                 value = self.__instance_values__[key]
             else:
@@ -388,19 +472,74 @@ class BaseArguments:
             add_help=False,
         )
         arg_parser.add_argument("-h", "--help", action="help", default=argparse.SUPPRESS, help="Show this help message and exit.")
-        cls._configure_parser(arg_parser)
+        cls.__configure_parser(arg_parser)
         return arg_parser
 
-    def load_from_namespace(self, args: argparse.Namespace) -> None:
-        # First, create instance-specific copies of all ArgumentSpecs
-        for key, spec, spec_type in self.__class__._iter_arguments():
-            # Create a copy of the spec for this instance
-            import copy
+    @classmethod
+    def __iter_arguments(cls) -> Iterable[Tuple[str, ArgumentSpec[object], ArgumentSpecType]]:
+        yield from ((key, spec, spec_type) for key, (spec, spec_type) in cls.__arguments__.items())
 
-            instance_spec = copy.deepcopy(spec)
+    @classmethod
+    def __iter_subcommands(cls) -> Iterable[Tuple[str, SubcommandSpec["BaseArguments"]]]:
+        yield from cls.__subcommands__.items()
+
+    @classmethod
+    def _has_subcommands(cls) -> bool:
+        return bool(cls.__subcommands__)
+
+    @classmethod
+    def __add_argument_to_parser(cls, parser: argparse.ArgumentParser, name_or_flags: List[str], **kwargs: object) -> None:
+        parser.add_argument(*name_or_flags, **kwargs)  # type: ignore
+
+    @classmethod
+    def __configure_parser(cls, parser: argparse.ArgumentParser, _depth: int = 0) -> None:
+        # 1) add this class's own arguments
+        for key, spec, _ in cls.__iter_arguments():
+            kwargs = spec.get_add_argument_kwargs()
+            is_positional = not any(name.startswith("-") for name in spec.name_or_flags)
+            if is_positional:
+                kwargs.pop("required", None)
+                cls.__add_argument_to_parser(parser, spec.name_or_flags, **kwargs)
+            else:
+                kwargs.setdefault("dest", key)
+                cls.__add_argument_to_parser(parser, spec.name_or_flags, **kwargs)
+
+        # 2) if there are subcommands, add them at this level
+        if cls._has_subcommands():
+            # 각 레벨에 고유한 dest 이름 사용
+            if _depth == 0:
+                dest_name = "subcommand"
+            else:
+                dest_name = f"subcommand_depth_{_depth}"
+
+            subparsers = parser.add_subparsers(
+                title="subcommands",
+                dest=dest_name,
+                help="Available subcommands",
+                required=not cls.__arguments__ and bool(cls.__subcommands__),
+            )
+            for name, subc in cls.__iter_subcommands():
+                subparser = subparsers.add_parser(
+                    name,
+                    help=subc.help,
+                    description=subc.description or subc.help,
+                )
+                try:
+                    argument_class = subc.get_argument_class()
+                    argument_class.__configure_parser(subparser, _depth + 1)
+                except Exception:
+                    # If getting the argument class fails, skip this subcommand configuration
+                    pass
+
+    def __load_from_namespace(self, args: argparse.Namespace) -> None:
+        # First, create instance-specific copies of all ArgumentSpecs
+        for key, spec, spec_type in self.__class__.__iter_arguments():
+            # Create a copy of the spec for this instance
+
+            instance_spec = deepcopy(spec)
             self.__instance_specs__[key] = instance_spec
 
-        for key, spec, spec_type in self.__class__._iter_arguments():
+        for key, spec, spec_type in self.__class__.__iter_arguments():
             instance_spec = self.__instance_specs__[key]
             is_positional = not any(n.startswith("-") for n in spec.name_or_flags)
             attr = spec.name_or_flags[0] if is_positional else (spec.dest or key)
@@ -431,7 +570,7 @@ class BaseArguments:
                 setattr(self, key, val)
 
         # Apply default factories after all values are loaded
-        for key, spec, spec_type in self.__class__._iter_arguments():
+        for key, spec, spec_type in self.__class__.__iter_arguments():
             instance_spec = self.__instance_specs__[key]
             # Only apply default factory if no value was set from command line
             if key not in self.__instance_values__ or self.__instance_values__[key] is None:
@@ -443,146 +582,12 @@ class BaseArguments:
                     if spec_type.is_specless_type:
                         setattr(self, key, factory_value)
 
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        cls.__arguments__ = {}
-        cls.__subcommands__ = {}
 
-        for current_cls in reversed(cls.__mro__):
-            if current_cls in (object, BaseArguments):
-                continue
-            # Subcommands
-            for attr_value in vars(current_cls).values():
-                if isinstance(attr_value, SubcommandSpec):
-                    attr_value = cast(SubcommandSpec["BaseArguments"], attr_value)
-                    cls.__subcommands__[attr_value.name] = attr_value
-
-            # ArgumentSpecs
-            docstrings = extract_attr_docstrings(current_cls)
-            for attr_name, attr_hint in _get_type_hints(current_cls):
-                attr_value: Optional[object] = getattr(current_cls, attr_name, None)
-                if isinstance(attr_value, ArgumentSpec):
-                    spec = cast(ArgumentSpec[object], attr_value)
-                else:
-                    action: Optional[Action] = None
-                    type: Optional[Callable[[str], object]] = None
-                    if attr_hint is bool:
-                        if attr_value is False:
-                            # If the default is False, we want to set action to store_true
-                            action = "store_true"
-                        elif attr_value is True:
-                            # If the default is True, we want to set action to store_false
-                            action = "store_false"
-                        else:
-                            # If the default is None, we want to get explicit boolean value
-                            def get_boolean(x: str) -> bool:
-                                if x.lower() in ("true", "1", "yes"):
-                                    return True
-                                elif x.lower() in ("false", "0", "no"):
-                                    return False
-                                raise argparse.ArgumentTypeError(f"Invalid boolean value: {x}")
-
-                            type = get_boolean
-
-                            # Check if attr_value is a callable (potential default factory)
-                    default_factory: Optional[Callable[[], object]] = None
-                    default_value: Optional[object] = attr_value
-
-                    # If attr_value is callable and not a type, treat it as default_factory
-                    if callable(attr_value) and not inspect.isclass(attr_value) and attr_value is not type:
-                        default_factory = attr_value
-                        default_value = None
-
-                    spec: ArgumentSpec[object] = ArgumentSpec(
-                        name_or_flags=[sanitize_name(attr_name)],
-                        default=default_value,
-                        default_factory=default_factory,
-                        required=default_value is None and default_factory is None and not is_optional(attr_hint),
-                        help=docstrings.get(attr_name, ""),
-                        action=action,
-                        type=type,
-                    )
-
-                if attr_name in cls.__arguments__:
-                    warnings.warn(f"Duplicate argument name '{attr_name}' in {current_cls.__name__}.", UserWarning)
-
-                try:
-                    spec_type: ArgumentSpecType = ArgumentSpecType.from_type_hint(attr_hint)
-                    if literals := spec_type.choices:
-                        spec.choices = literals
-                    if spec.type is None and (th := spec_type.type):
-                        spec.type = th
-                    if tn := spec_type.tuple_nargs:
-                        spec.nargs = tn
-                    elif spec.nargs is None and spec_type.should_return_as_list or spec_type.should_return_as_tuple:
-                        spec.nargs = "*"
-                    cls.__arguments__[attr_name] = (spec, spec_type)
-                except Exception as e:
-                    print_exc()
-                    warnings.warn(f"Error processing {attr_name} in {current_cls.__name__}: {e}", UserWarning)
-                    continue
-
-    @classmethod
-    def _iter_arguments(cls) -> Iterable[Tuple[str, ArgumentSpec[object], ArgumentSpecType]]:
-        yield from ((key, spec, spec_type) for key, (spec, spec_type) in cls.__arguments__.items())
-
-    @classmethod
-    def _iter_subcommands(cls) -> Iterable[Tuple[str, SubcommandSpec["BaseArguments"]]]:
-        yield from cls.__subcommands__.items()
-
-    @classmethod
-    def _has_subcommands(cls) -> bool:
-        return bool(cls.__subcommands__)
-
-    @classmethod
-    def _add_argument_to_parser(cls, parser: argparse.ArgumentParser, name_or_flags: List[str], **kwargs: object) -> None:
-        parser.add_argument(*name_or_flags, **kwargs)  # type: ignore
-
-    @classmethod
-    def _configure_parser(cls, parser: argparse.ArgumentParser, _depth: int = 0) -> None:
-        # 1) add this class's own arguments
-        for key, spec, _ in cls._iter_arguments():
-            kwargs = spec.get_add_argument_kwargs()
-            is_positional = not any(name.startswith("-") for name in spec.name_or_flags)
-            if is_positional:
-                kwargs.pop("required", None)
-                cls._add_argument_to_parser(parser, spec.name_or_flags, **kwargs)
-            else:
-                kwargs.setdefault("dest", key)
-                cls._add_argument_to_parser(parser, spec.name_or_flags, **kwargs)
-
-        # 2) if there are subcommands, add them at this level
-        if cls._has_subcommands():
-            # 각 레벨에 고유한 dest 이름 사용
-            if _depth == 0:
-                dest_name = "subcommand"
-            else:
-                dest_name = f"subcommand_depth_{_depth}"
-
-            subparsers = parser.add_subparsers(
-                title="subcommands",
-                dest=dest_name,
-                help="Available subcommands",
-                required=not cls.__arguments__ and bool(cls.__subcommands__),
-            )
-            for name, subc in cls._iter_subcommands():
-                subparser = subparsers.add_parser(
-                    name,
-                    help=subc.help,
-                    description=subc.description or subc.help,
-                )
-                try:
-                    argument_class = subc.get_argument_class()
-                    argument_class._configure_parser(subparser, _depth + 1)
-                except Exception:
-                    # If getting the argument class fails, skip this subcommand configuration
-                    pass
+ignored_annotations = tuple(tp.get_type_hints(BaseArguments).keys())
 
 
-def _get_type_hints(obj: object) -> Iterator[Tuple[str, object]]:
+def _get_type_hints(obj: type) -> Iterator[Tuple[str, object]]:
     """Get type hints for an object, excluding those in BaseArguments."""
-    base_arguments_attrs: List[str] = [key for key in tp.get_type_hints(BaseArguments).keys()]
     for k, v in tp.get_type_hints(obj).items():
-        if k in base_arguments_attrs:
-            continue
-        yield k, v
+        if k not in ignored_annotations:
+            yield k, v
