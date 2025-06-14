@@ -12,8 +12,7 @@ class RunnableArguments(BaseArguments, ABC, Generic[T]):
     def run(self) -> T: ...
 
 
-class SubcommandArguments(BaseArguments, ABC):
-    @abstractmethod
+class SubcommandArguments(BaseArguments):
     def execute(self) -> None:
         if isinstance(last_subcommand := self.last_command, RunnableArguments):
             last_subcommand.run()
