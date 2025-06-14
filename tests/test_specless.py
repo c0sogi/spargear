@@ -81,6 +81,14 @@ class SpeclessBooleanArguments(BaseArguments):
     """bool_with_default_true"""
 
 
+class SpeclessPositionalArguments(BaseArguments):
+    flag: int
+    """--flag"""
+    POSITIONAL: int
+    """positional"""
+    AnotherFlag: int
+
+
 class TestSpeclessBooleanArguments(unittest.TestCase):
     def test_basic_things(self):
         with self.assertRaises(SystemExit):
@@ -170,6 +178,14 @@ class TestSpeclessTupleAndLists(unittest.TestCase):
         self.assertEqual(args4.optional_list_of_ints_without_default, None)
         args4 = SpeclessTupleAndLists(["--optional-list-of-ints-without-default", "4", "5"])
         self.assertEqual(args4.optional_list_of_ints_without_default, [4, 5])
+
+
+class TestSpeclessPositionalArguments(unittest.TestCase):
+    def test_basic_things(self):
+        args = SpeclessPositionalArguments(["2", "--flag", "1", "--anotherflag", "3"])
+        self.assertEqual(args.flag, 1)
+        self.assertEqual(args.POSITIONAL, 2)
+        self.assertEqual(args.AnotherFlag, 3)
 
 
 if __name__ == "__main__":

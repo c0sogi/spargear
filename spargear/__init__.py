@@ -1,6 +1,7 @@
 from ._typing import SUPPRESS, Action, FileProtocol, TypedFileType
 from .argument_spec import ArgumentSpec
 from .argument_spec_type import ArgumentSpecType
+from .arguments import RunnableArguments
 from .base_arguments import BaseArguments
 from .subcommand_spec import SubcommandSpec
 
@@ -11,6 +12,7 @@ __all__ = [
     "TypedFileType",
     "ArgumentSpec",
     "ArgumentSpecType",
+    "RunnableArguments",
     "BaseArguments",
     "SubcommandSpec",
 ]

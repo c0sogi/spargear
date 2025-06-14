@@ -41,7 +41,11 @@ def get_args(obj: object) -> Tuple[object, ...]:
 
 def sanitize_name(name: str) -> str:
     """Sanitize a name for use as a command-line argument."""
-    return "--" + name.replace("_", "-").lower().lstrip("-")
+    sanitized: str = name.replace("_", "-").lower().lstrip("-")
+    if name.isupper():
+        return sanitized  # if the name is all uppercase, assume it's positional
+    else:
+        return f"--{sanitized}"  # if the name is not all uppercase, assume it's a flag
 
 
 def ensure_no_optional(t: object) -> object:
