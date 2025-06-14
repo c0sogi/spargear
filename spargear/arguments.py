@@ -10,3 +10,12 @@ S = TypeVar("S", bound=BaseArguments)
 class RunnableArguments(BaseArguments, ABC, Generic[T]):
     @abstractmethod
     def run(self) -> T: ...
+
+
+class SubcommandArguments(BaseArguments, ABC):
+    @abstractmethod
+    def execute(self) -> None:
+        if isinstance(last_subcommand := self.last_command, RunnableArguments):
+            last_subcommand.run()
+        else:
+            self.get_parser().print_help()

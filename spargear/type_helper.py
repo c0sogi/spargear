@@ -123,5 +123,5 @@ def extract_attr_docstrings(cls: Type[object]) -> Dict[str, str]:
 
         return docstrings
     except Exception as e:
-        logger.warning(f"Failed to extract docstrings from {cls.__name__}: {e}")
+        logger.debug(f"Failed to extract docstrings from {cls.__name__}: {e}")
         return {}
