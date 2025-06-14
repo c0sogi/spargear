@@ -14,7 +14,7 @@ class RunnableArguments(BaseArguments, ABC, Generic[T]):
 
 class SubcommandArguments(BaseArguments):
     def execute(self) -> None:
-        if isinstance(last_subcommand := self.last_command, RunnableArguments):
+        if isinstance(last_subcommand := self.last_subcommand, RunnableArguments):
             last_subcommand.run()
         else:
             self.get_parser().print_help()
