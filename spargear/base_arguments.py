@@ -1,9 +1,9 @@
 import argparse
 import inspect
 import json
+import logging
 import pickle
 import typing as tp
-import warnings
 from copy import deepcopy
 from dataclasses import field, make_dataclass
 from pathlib import Path
@@ -28,6 +28,8 @@ from .argument_spec import ArgumentSpec
 from .argument_spec_type import ArgumentSpecType
 from .subcommand_spec import SubcommandSpec
 from .type_helper import extract_attr_docstrings, is_optional, sanitize_name
+
+logger = logging.getLogger(__name__)
 
 
 class BaseArguments:
@@ -197,7 +199,7 @@ class BaseArguments:
                     )
 
                 if attr_name in cls.__arguments__:
-                    warnings.warn(f"Duplicate argument name '{attr_name}' in {current_cls.__name__}.", UserWarning)
+                    logger.debug(f"Duplicate argument name '{attr_name}' in {current_cls.__name__}.")
 
                 try:
                     spec_type: ArgumentSpecType = ArgumentSpecType.from_type_hint(attr_hint)
@@ -212,7 +214,7 @@ class BaseArguments:
                     cls.__arguments__[attr_name] = (spec, spec_type)
                 except Exception as e:
                     print_exc()
-                    warnings.warn(f"Error processing {attr_name} in {current_cls.__name__}: {e}", UserWarning)
+                    logger.warning(f"Error processing {attr_name} in {current_cls.__name__}: {e}")
                     continue
 
     def get(self, key: str) -> Optional[object]:

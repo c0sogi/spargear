@@ -188,5 +188,24 @@ class TestSpeclessPositionalArguments(unittest.TestCase):
         self.assertEqual(args.AnotherFlag, 3)
 
 
+class TestSpeclessInheritance(unittest.TestCase):
+    def test_basic_things(self):
+        class SpeclessInheritance(BaseArguments):
+            """Example argument parser demonstrating specless inheritance."""
+
+            flag1: int
+            """--flag1"""
+
+        class SpeclessInheritance2(SpeclessInheritance):
+            flag1: str  # pyright: ignore[reportIncompatibleVariableOverride]
+            """--flag1"""
+            flag2: int
+            """--flag2"""
+
+        args = SpeclessInheritance2(["--flag1", "1", "--flag2", "2"])
+        self.assertEqual(args.flag1, "1")
+        self.assertEqual(args.flag2, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
