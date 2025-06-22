@@ -11,6 +11,7 @@ A powerful yet simple Python library for declarative command-line argument parsi
 - 🚀 **Typed and Safe**: Leveraging Python typing and dataclasses to ensure type safety and developer productivity.
 - 🔧 **Flexible**: Supports complex argument parsing scenarios, including subcommands and nested configurations.
 - 📦 **Minimal Dependencies**: Pure Python, built directly upon the reliable `argparse` module.
+- 🎯 **Modern API**: Beautiful `@subcommand` decorator for intuitive subcommand definition.
 
 ## Installation
 
@@ -52,6 +53,7 @@ python app.py --input example.txt --verbose
 
 ## Features
 
+- **Modern `@subcommand` decorator** for clean subcommand definitions
 - Automatic inference of argument types
 - Nested subcommands with clear definitions
 - Typed file handlers via custom protocols
@@ -61,12 +63,94 @@ python app.py --input example.txt --verbose
 - **JSON/Pickle serialization** for configuration management
 - **Configuration file support** with command-line override capabilities
 
-## Advanced Usage
+## Subcommands with @subcommand decorator
 
-Subcommands:
+The easiest and most intuitive way to define subcommands is using the `@subcommand` decorator:
 
 ```python
-from typing import Optional
+from spargear import BaseArguments, ArgumentSpec, subcommand
+
+
+class InitArguments(BaseArguments):
+    """Arguments for the init subcommand."""
+    name: ArgumentSpec[str] = ArgumentSpec(["name"], help="Project name")
+
+
+class CommitArguments(BaseArguments):
+    """Arguments for the commit subcommand."""
+    message: ArgumentSpec[str] = ArgumentSpec(["-m", "--message"], required=True, help="Commit message")
+    amend: ArgumentSpec[bool] = ArgumentSpec(["--amend"], action="store_true", help="Amend previous commit")
+
+
+class GitCLI(BaseArguments):
+    """A Git-like CLI tool."""
+    
+    @subcommand(help="Initialize a new repository")
+    def init():
+        """Initialize a new Git repository.
+        
+        Creates a new repository in the current directory.
+        """
+        return InitArguments
+    
+    @subcommand(name="commit", help="Record changes to the repository")
+    def commit_cmd():
+        return CommitArguments
+
+
+# Parse and use
+args = GitCLI()
+
+# Access the active subcommand
+if args.last_subcommand:
+    if isinstance(args.last_subcommand, InitArguments):
+        name = args.last_subcommand.name.unwrap()
+        print(f"Initializing project: {name}")
+    
+    elif isinstance(args.last_subcommand, CommitArguments):
+        message = args.last_subcommand.message.unwrap()
+        amend = args.last_subcommand.amend.unwrap()
+        print(f"Committing: {message} (amend: {amend})")
+```
+
+Run your CLI:
+
+```bash
+python app.py init my_project
+python app.py commit -m "Initial commit" --amend
+```
+
+### @subcommand Features
+
+The `@subcommand` decorator automatically:
+- Extracts the subcommand name from the method name (or use `name=` parameter to override)
+- Uses the method's docstring as help text and description
+- Treats the method as a factory that returns the argument class
+- No need for `@staticmethod` - the decorator handles it automatically!
+
+```python
+class MyApp(BaseArguments):
+    @subcommand()  # Name will be "serve", help from docstring
+    def serve():
+        """Start the development server.
+        
+        Launches a local development server on the specified port
+        with hot reload capabilities.
+        """
+        return ServeArguments
+    
+    @subcommand(name="db-migrate", help="Run database migrations")
+    def database_migrate():  # Custom name overrides method name
+        return MigrateArguments
+```
+
+## Advanced Usage
+
+### Manual SubcommandSpec (Alternative approach)
+
+For more control or complex scenarios, you can still use `SubcommandSpec` directly:
+
+```python
 from spargear import BaseArguments, SubcommandSpec, ArgumentSpec
 
 
@@ -81,25 +165,9 @@ class CommitArgs(BaseArguments):
 class GitCLI(BaseArguments):
     init = SubcommandSpec("init", InitArgs, help="Initialize a new repository")
     commit = SubcommandSpec("commit", CommitArgs, help="Commit changes")
-
-
-# Parse the command line arguments
-args = GitCLI()
-
-# Print the parsed arguments
-name: Optional[str] = args.init.argument_class.name.value
-message: Optional[str] = args.commit.argument_class.message.value
-print(f"Name: {name}")
-print(f"Message: {message}")
-
 ```
 
-Run your CLI:
-
-```bash
-python app.py init my_project
-python app.py commit -m "Initial commit"
-```
+**Note**: The `@subcommand` decorator is the recommended approach for most use cases as it provides a cleaner, more maintainable syntax.
 
 ### Default Factories
 
@@ -167,6 +235,20 @@ config.update_from_dict({"host": "0.0.0.0", "port": 5000})
 
 ## API Reference
 
+### @subcommand Decorator
+
+```python
+@subcommand(name=None, help="", description=None, argument_class=None)
+def method_name():
+    return ArgumentClass
+```
+
+Parameters:
+- `name` (optional): Override the subcommand name (defaults to method name)
+- `help` (optional): Brief help text (defaults to first line of docstring)
+- `description` (optional): Detailed description (defaults to rest of docstring)
+- `argument_class` (optional): Directly specify the argument class instead of using the factory
+
 ### BaseArguments Methods
 
 #### Serialization
@@ -184,6 +266,9 @@ config.update_from_dict({"host": "0.0.0.0", "port": 5000})
 - `save_config(file_path, format="json")` - Save configuration
 - `load_config(file_path, format=None, args=None)` - Load configuration
 - `update_from_dict(data)` - Update current instance
+
+#### Subcommand Access
+- `last_subcommand` - Get the active subcommand instance (if any)
 
 ### ArgumentSpec Features
 
