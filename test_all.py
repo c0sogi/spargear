@@ -1,5 +1,6 @@
 from os import environ
 from pathlib import Path
+from typing import List
 
 GREEN = "\033[92m"
 YELLOW = "\033[93m"
@@ -48,9 +49,9 @@ else:
 
         install_uv()
 
-    for python_version in (LOWEST_SUPPORT_PYTHON_VERSION, HIGHEST_SUPPORT_PYTHON_VERSION):
+    def run(args: List[str], python_version: str):
         subprocess.run(
-            ["uv", "run", "--python", python_version, __file__],
+            args,
             check=True,
             env={
                 **environ,
@@ -58,5 +59,8 @@ else:
                 "SPARGEAR_TEST_PYTHON_VERSION": python_version,
             },
         )
+
+    for python_version in (LOWEST_SUPPORT_PYTHON_VERSION, HIGHEST_SUPPORT_PYTHON_VERSION):
+        run(["uv", "run", "--python", python_version, __file__], python_version=python_version)
 
     print(f"{GREEN}[*] All tests passed{RESET}")

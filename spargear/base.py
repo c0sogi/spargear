@@ -3,7 +3,6 @@ import inspect
 import json
 import logging
 import pickle
-import typing as tp
 from copy import deepcopy
 from dataclasses import field, make_dataclass
 from pathlib import Path
@@ -23,11 +22,9 @@ from typing import (
     cast,
 )
 
-from ._typing import Action
-from .argument_spec import ArgumentSpec
-from .argument_spec_type import ArgumentSpecType
-from .subcommand_spec import SubcommandSpec
-from .type_helper import extract_attr_docstrings, is_optional, sanitize_name
+from ._typing import Action, Annotated, extract_attr_docstrings, get_args, get_origin, get_type_hints, is_optional, sanitize_name
+from .argspec import ArgumentSpec, ArgumentSpecType
+from .subcommand import SubcommandSpec
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +158,16 @@ class BaseArguments:
                 else:
                     action: Optional[Action] = None
                     type: Optional[Callable[[str], object]] = None
-                    if attr_hint is bool:
+                    if get_origin(attr_hint) is Annotated:
+                        args = get_args(attr_hint)
+                        attr_hint = args[0]
+                        callable_metadata = next((a for a in args[1:] if callable(a)), None)
+                    else:
+                        callable_metadata: Optional[Callable[[str], object]] = None
+
+                    if callable_metadata is not None:
+                        type = callable_metadata
+                    elif attr_hint is bool:
                         if attr_value is False:
                             # If the default is False, we want to set action to store_true
                             action = "store_true"
@@ -179,7 +185,7 @@ class BaseArguments:
 
                             type = get_boolean
 
-                            # Check if attr_value is a callable (potential default factory)
+                        # Check if attr_value is a callable (potential default factory)
                     default_factory: Optional[Callable[[], object]] = None
                     default_value: Optional[object] = attr_value
 
@@ -517,6 +523,7 @@ class BaseArguments:
             subparsers = parser.add_subparsers(
                 title="subcommands",
                 dest=dest_name,
+                metavar="subcommand",  # Always show 'subcommand' in help text
                 help="Available subcommands",
                 required=not cls.__arguments__ and bool(cls.__subcommands__),
             )
@@ -585,11 +592,11 @@ class BaseArguments:
                         setattr(self, key, factory_value)
 
 
-ignored_annotations = tuple(tp.get_type_hints(BaseArguments).keys())
+ignored_annotations = tuple(get_type_hints(BaseArguments).keys())
 
 
 def _get_type_hints(obj: type) -> Iterator[Tuple[str, object]]:
     """Get type hints for an object, excluding those in BaseArguments."""
-    for k, v in tp.get_type_hints(obj).items():
+    for k, v in get_type_hints(obj, include_extras=True).items():
         if k not in ignored_annotations:
             yield k, v

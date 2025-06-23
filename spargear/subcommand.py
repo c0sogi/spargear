@@ -1,8 +1,11 @@
 from dataclasses import dataclass, field
+from inspect import getdoc
 from typing import TYPE_CHECKING, Callable, Generic, Optional, Type, TypeVar
 
+from ._typing import unwrap_callable
+
 if TYPE_CHECKING:
-    from .base_arguments import BaseArguments
+    from .base import BaseArguments
 
 S = TypeVar("S", bound="BaseArguments")
 
@@ -109,19 +112,17 @@ def subcommand(name: Optional[str] = None, help: str = "", description: Optional
 
     def decorator(func: Callable[..., Type[S]]) -> SubcommandSpec[S]:
         # Handle staticmethod objects
-        actual_func = func
-        if isinstance(func, staticmethod):
-            actual_func = func.__func__
+        unwrapped_func = unwrap_callable(func)
 
         # Extract name from function name if not provided
-        subcommand_name = name if name is not None else actual_func.__name__
+        subcommand_name = name if name is not None else unwrapped_func.__name__
 
         # Extract help from docstring if not provided
-        func_help = help
-        func_description = description
-        if not func_help and actual_func.__doc__:
+        func_help: str = help
+        func_description: Optional[str] = description
+        if not func_help and (doc := getdoc(unwrapped_func)):
             # Use first line of docstring as help
-            lines = actual_func.__doc__.strip().split("\n")
+            lines = doc.strip().split("\n")
             func_help = lines[0].strip()
             # Use rest of docstring as description if available and description not provided
             if not func_description and len(lines) > 1:
@@ -139,11 +140,11 @@ def subcommand(name: Optional[str] = None, help: str = "", description: Optional
                 # At class definition time, methods are unbound functions
                 # So we can call them directly without self
                 try:
-                    result = actual_func()
-                    return result
+                    result = unwrapped_func()
+                    return result  # pyright: ignore[reportReturnType]
                 except TypeError:
                     # If there's still a TypeError, the function probably has other required parameters
-                    raise ValueError(f"Method '{actual_func.__name__}' cannot be used as a factory. Make sure it has no required parameters (including 'self').")
+                    raise ValueError(f"Method '{unwrapped_func.__name__}' cannot be used as a factory. Make sure it has no required parameters (including 'self').")
 
             return SubcommandSpec(name=subcommand_name, argument_class_factory=argument_class_factory, help=func_help, description=func_description)
 

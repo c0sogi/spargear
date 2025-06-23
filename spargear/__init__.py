@@ -1,9 +1,8 @@
-from ._typing import SUPPRESS, Action, FileProtocol, TypedFileType
-from .argument_spec import ArgumentSpec
-from .argument_spec_type import ArgumentSpecType
+from ._typing import SUPPRESS, Action, Annotated, FileProtocol, TypedFileType
+from .argspec import ArgumentSpec, ArgumentSpecType
 from .arguments import RunnableArguments, SubcommandArguments
-from .base_arguments import BaseArguments
-from .subcommand_spec import SubcommandSpec, subcommand
+from .base import BaseArguments
+from .subcommand import SubcommandSpec, subcommand
 
 __all__ = [
     # Core classes
@@ -21,4 +20,5 @@ __all__ = [
     "Action",
     "FileProtocol",
     "TypedFileType",
+    "Annotated",
 ]

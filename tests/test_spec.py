@@ -9,37 +9,17 @@ from spargear import SUPPRESS, FileProtocol, TypedFileType, ArgumentSpec, BaseAr
 class SimpleArguments(BaseArguments):
     """Example argument parser demonstrating various features."""
 
-    my_str_arg: ArgumentSpec[str] = ArgumentSpec(
-        ["-s", "--string-arg"], default="Hello", help="A string argument.", metavar="TEXT"
-    )
+    my_str_arg: ArgumentSpec[str] = ArgumentSpec(["-s", "--string-arg"], default="Hello", help="A string argument.", metavar="TEXT")
     my_int_arg: ArgumentSpec[int] = ArgumentSpec(["-i", "--integer-arg"], help="A required integer argument.")
-    verbose: ArgumentSpec[bool] = ArgumentSpec(
-        ["-v", "--verbose"], action="store_true", help="Increase output verbosity."
-    )
-    my_list_arg: ArgumentSpec[List[str]] = ArgumentSpec(
-        ["--list-values"], nargs=3, help="One or more values.", default=None
-    )
-    input_file: ArgumentSpec[FileProtocol] = ArgumentSpec(
-        ["input_file"], type=TypedFileType("r", encoding="utf-8"), help="Input file", metavar="INPUT"
-    )
-    output_file: ArgumentSpec[Optional[FileProtocol]] = ArgumentSpec(
-        ["output_file"], type=TypedFileType("w", encoding="utf-8"), nargs="?", default=None, help="Output file"
-    )
-    log_level: ArgumentSpec[Literal["DEBUG", "INFO", "WARNING", "ERROR"]] = ArgumentSpec(
-        ["--log-level"], default="INFO", help="Set log level."
-    )
-    mode: ArgumentSpec[Literal["fast", "slow", "careful"]] = ArgumentSpec(
-        ["--mode"], choices=["fast", "slow"], default="fast", help="Mode"
-    )
-    enabled_features: ArgumentSpec[List[Literal["CACHE", "LOGGING", "RETRY"]]] = ArgumentSpec(
-        ["--features"], nargs="*", default=[], help="Enable features"
-    )
-    tuple_features: ArgumentSpec[Tuple[Literal["CACHE", "LOGGING", "RETRY"], Literal["CACHE", "LOGGING", "RETRY"]]] = (
-        ArgumentSpec(["--tuple-features"], help="Tuple features")
-    )
-    optional_flag: ArgumentSpec[str] = ArgumentSpec(
-        ["--opt-flag"], default=SUPPRESS, help="Optional flag suppressed if missing"
-    )
+    verbose: ArgumentSpec[bool] = ArgumentSpec(["-v", "--verbose"], action="store_true", help="Increase output verbosity.")
+    my_list_arg: ArgumentSpec[List[str]] = ArgumentSpec(["--list-values"], nargs=3, help="One or more values.", default=None)
+    input_file: ArgumentSpec[FileProtocol] = ArgumentSpec(["input_file"], type=TypedFileType("r", encoding="utf-8"), help="Input file", metavar="INPUT")
+    output_file: ArgumentSpec[Optional[FileProtocol]] = ArgumentSpec(["output_file"], type=TypedFileType("w", encoding="utf-8"), nargs="?", default=None, help="Output file")
+    log_level: ArgumentSpec[Literal["DEBUG", "INFO", "WARNING", "ERROR"]] = ArgumentSpec(["--log-level"], default="INFO", help="Set log level.")
+    mode: ArgumentSpec[Literal["fast", "slow", "careful"]] = ArgumentSpec(["--mode"], default="fast", help="Mode")
+    enabled_features: ArgumentSpec[List[Literal["CACHE", "LOGGING", "RETRY"]]] = ArgumentSpec(["--features"], nargs="*", default=[], help="Enable features")
+    tuple_features: ArgumentSpec[Tuple[Literal["CACHE", "LOGGING", "RETRY"], Literal["CACHE", "LOGGING", "RETRY"]]] = ArgumentSpec(["--tuple-features"], help="Tuple features")
+    optional_flag: ArgumentSpec[str] = ArgumentSpec(["--opt-flag"], default=SUPPRESS, help="Optional flag suppressed if missing")
 
 
 # raise Exception(SimpleArguments.__arguments__)

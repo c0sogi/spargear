@@ -1,7 +1,7 @@
 import unittest
 from typing import List, Optional, Tuple
 
-from spargear import ArgumentSpec, BaseArguments
+from spargear import Annotated, ArgumentSpec, BaseArguments
 
 
 class SpeclessBasicArguments(BaseArguments):
@@ -205,6 +205,24 @@ class TestSpeclessInheritance(unittest.TestCase):
         args = SpeclessInheritance2(["--flag1", "1", "--flag2", "2"])
         self.assertEqual(args.flag1, "1")
         self.assertEqual(args.flag2, 2)
+
+
+class TestAnnotated(unittest.TestCase):
+    def test_basic_things(self):
+        def negation(x: str) -> int:
+            return -int(x)
+
+        class SpeclessAnnotated(BaseArguments):
+            a: Annotated[int, negation]
+            """--a"""
+            b: int
+            """--b"""
+            c: Annotated[int, None]
+
+        args = SpeclessAnnotated(["--a", "1", "--b", "2", "--c", "3"])
+        self.assertEqual(args.a, -1)
+        self.assertEqual(args.b, 2)
+        self.assertEqual(args.c, 3)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
 import datetime
 import uuid
 from typing import Union, Callable
-from spargear.base_arguments import BaseArguments, ArgumentSpec
+from spargear.base import BaseArguments, ArgumentSpec
 
 
 class TestArguments(BaseArguments):
