@@ -169,7 +169,7 @@ class BaseArguments:
                 else:
                     spec, attr_hint = _infer_spec_and_correct_typehint_from_nonspec_typehint(
                         attr_name=attr_name,
-                        attr_hint=attr_hint,
+                        type_no_spec=attr_hint,
                         attr_value=attr_value,
                         docstrings=docstrings,
                     )
@@ -572,21 +572,27 @@ def _get_type_hints(obj: type) -> Iterator[Tuple[str, object]]:
             yield k, v
 
 
-def _infer_spec_and_correct_typehint_from_nonspec_typehint(attr_name: str, attr_hint: object, attr_value: object, docstrings: Dict[str, str]) -> Tuple[ArgumentSpec[object], object]:
+def _infer_spec_and_correct_typehint_from_nonspec_typehint(attr_name: str, type_no_spec: object, attr_value: object, docstrings: Dict[str, str]) -> Tuple[ArgumentSpec[object], object]:
     action: Optional[Action] = None
     type: Optional[Callable[[str], object]] = None
-    if get_origin(attr_hint) is Annotated:
-        args = get_args(attr_hint)
-        attr_hint = args[0]
+
+    optional: bool = is_optional(type_no_spec)
+    type_no_optional_or_spec: object = ensure_no_optional(type_no_spec)
+
+    if get_origin(type_no_optional_or_spec) is Annotated:
+        args = get_args(type_no_optional_or_spec)
+
+        optional = optional or is_optional(args[0])
+        type_no_optional_or_spec = ensure_no_optional(args[0])
         callable_metadata = next((a for a in args[1:] if callable(a)), None)
     else:
         callable_metadata: Optional[Callable[[str], object]] = None
 
     if callable_metadata is not None:
         type = callable_metadata
-        if get_arguments_of_container_types(type_no_optional_or_spec=attr_hint, container_types=(list, tuple)):
-            attr_hint = get_type_of_element_of_container_types(type_no_optional_or_spec=ensure_no_optional(attr_hint), container_types=(list, tuple))
-    elif attr_hint is bool:
+        if get_arguments_of_container_types(type_no_optional_or_spec=type_no_optional_or_spec, container_types=(list, tuple)):
+            type_no_optional_or_spec = get_type_of_element_of_container_types(type_no_optional_or_spec=ensure_no_optional(type_no_optional_or_spec), container_types=(list, tuple))
+    elif type_no_optional_or_spec is bool:
         if attr_value is False:
             # If the default is False, we want to set action to store_true
             action = "store_true"
@@ -617,9 +623,9 @@ def _infer_spec_and_correct_typehint_from_nonspec_typehint(attr_name: str, attr_
         name_or_flags=[sanitize_name(attr_name)],
         default=default_value,
         default_factory=default_factory,
-        required=default_value is None and default_factory is None and not is_optional(attr_hint),
+        required=default_value is None and default_factory is None and not optional,
         help=docstrings.get(attr_name, ""),
         action=action,
         type=type,
     )
-    return spec, attr_hint
+    return spec, type_no_optional_or_spec
