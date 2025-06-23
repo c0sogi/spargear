@@ -224,6 +224,43 @@ class TestAnnotated(unittest.TestCase):
         self.assertEqual(args.b, 2)
         self.assertEqual(args.c, 3)
 
+    def test_list(self):
+        def as_list(x: str) -> List[int]:
+            return [int(i) for i in x.split(",")]
+
+        class SpeclessAnnotated(BaseArguments):
+            a: Annotated[List[int], None]
+            b: Annotated[List[int], None] = [-2, -3, -4]
+            c: Annotated[List[int], as_list]
+            d: Annotated[List[int], as_list] = [-4, -5, -6]
+            e: Annotated[int, as_list]  # Wrong case! (anti-pattern)
+            f: Annotated[int, as_list] = 1  # Wrong case! (anti-pattern)
+
+        args = SpeclessAnnotated([
+            "--a",
+            "1",
+            "2",
+            "3",
+            "--b",
+            "2",
+            "3",
+            "4",
+            "--c",
+            "3,4,5",
+            "--d",
+            "4,5,6",
+            "--e",
+            "5",
+            "--f",
+            "6",
+        ])
+        self.assertEqual(args.a, [1, 2, 3])
+        self.assertEqual(args.b, [2, 3, 4])
+        self.assertEqual(args.c, [3, 4, 5])
+        self.assertEqual(args.d, [4, 5, 6])
+        self.assertEqual(args.e, [5])
+        self.assertEqual(args.f, [6])
+
 
 if __name__ == "__main__":
     unittest.main()

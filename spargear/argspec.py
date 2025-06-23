@@ -76,14 +76,6 @@ class ArgumentSpec(Generic[T]):
         if self.value is None and self.default_factory is not None:
             self.value = self.default_factory()
 
-    @classmethod
-    def _unwrap_argument_spec(cls, t: object) -> object:
-        """Unwraps the ArgumentSpec type to get the actual type."""
-        if (origin := get_origin(t)) is not None and isinstance(origin, type) and issubclass(origin, ArgumentSpec) and (args := get_args(t)):
-            # Extract T from ArgumentSpec[T]
-            return args[0]
-        return t
-
 
 class ArgumentSpecType(NamedTuple):
     """Represents the type information extracted from ArgumentSpec type hints."""
@@ -94,7 +86,7 @@ class ArgumentSpecType(NamedTuple):
     @classmethod
     def from_type_hint(cls, type_hint: object):
         """Extract type information from a type hint."""
-        type_no_spec: object = ArgumentSpec._unwrap_argument_spec(type_hint)  # pyright: ignore[reportPrivateUsage]
+        type_no_spec: object = ensure_no_spec(type_hint)  # pyright: ignore[reportPrivateUsage]
         return cls(
             type_no_optional_or_spec=ensure_no_optional(type_no_spec),
             is_specless_type=type_hint is type_no_spec,
@@ -147,3 +139,11 @@ class ArgumentSpecType(NamedTuple):
             "should_return_as_tuple": self.should_return_as_tuple,
             "tuple_nargs": self.tuple_nargs,
         }
+
+
+def ensure_no_spec(t: object) -> object:
+    """Unwraps the ArgumentSpec type to get the actual type."""
+    if (origin := get_origin(t)) is not None and isinstance(origin, type) and issubclass(origin, ArgumentSpec) and (args := get_args(t)):
+        # Extract T from ArgumentSpec[T]
+        return args[0]
+    return t

@@ -27,6 +27,7 @@ if version := environ.get("SPARGEAR_TEST_PYTHON_VERSION"):
 
     unittest.main()
 
+
 else:
     import subprocess
 
@@ -61,6 +62,7 @@ else:
         )
 
     for python_version in (LOWEST_SUPPORT_PYTHON_VERSION, HIGHEST_SUPPORT_PYTHON_VERSION):
+        run(["uv", "run",  "--extra", "dev","pyright",], python_version=python_version)
         run(["uv", "run", "--python", python_version, __file__], python_version=python_version)
 
     print(f"{GREEN}[*] All tests passed{RESET}")

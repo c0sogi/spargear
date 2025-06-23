@@ -1,13 +1,11 @@
 [project]
 name = "spargear"
-version = "0.2.11"
+version = "0.2.12"
 description = "Declarative and typed argument parsing built on argparse."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.8"
-dependencies = [
-    "typing-extensions>=3.10 ; python_full_version < '3.9'",
-]
+dependencies = ["typing-extensions>=3.10 ; python_full_version < '3.9'"]
 
 [project.urls]
 repository = "https://github.com/c0sogi/spargear"

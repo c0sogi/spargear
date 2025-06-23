@@ -22,8 +22,19 @@ from typing import (
     cast,
 )
 
-from ._typing import Action, Annotated, extract_attr_docstrings, get_args, get_origin, get_type_hints, is_optional, sanitize_name
-from .argspec import ArgumentSpec, ArgumentSpecType
+from ._typing import (
+    Action,
+    Annotated,
+    extract_attr_docstrings,
+    get_args,
+    get_arguments_of_container_types,
+    get_origin,
+    get_type_hints,
+    get_type_of_element_of_container_types,
+    is_optional,
+    sanitize_name,
+)
+from .argspec import ArgumentSpec, ArgumentSpecType, ensure_no_optional
 from .subcommand import SubcommandSpec
 
 logger = logging.getLogger(__name__)
@@ -150,58 +161,17 @@ class BaseArguments:
                     cls.__subcommands__[attr_value.name] = attr_value
 
             # ArgumentSpecs
-            docstrings = extract_attr_docstrings(current_cls)
+            docstrings: Dict[str, str] = extract_attr_docstrings(current_cls)
             for attr_name, attr_hint in _get_type_hints(current_cls):
                 attr_value: Optional[object] = getattr(current_cls, attr_name, None)
                 if isinstance(attr_value, ArgumentSpec):
-                    spec = cast(ArgumentSpec[object], attr_value)
+                    spec: ArgumentSpec[object] = cast(ArgumentSpec[object], attr_value)
                 else:
-                    action: Optional[Action] = None
-                    type: Optional[Callable[[str], object]] = None
-                    if get_origin(attr_hint) is Annotated:
-                        args = get_args(attr_hint)
-                        attr_hint = args[0]
-                        callable_metadata = next((a for a in args[1:] if callable(a)), None)
-                    else:
-                        callable_metadata: Optional[Callable[[str], object]] = None
-
-                    if callable_metadata is not None:
-                        type = callable_metadata
-                    elif attr_hint is bool:
-                        if attr_value is False:
-                            # If the default is False, we want to set action to store_true
-                            action = "store_true"
-                        elif attr_value is True:
-                            # If the default is True, we want to set action to store_false
-                            action = "store_false"
-                        else:
-                            # If the default is None, we want to get explicit boolean value
-                            def get_boolean(x: str) -> bool:
-                                if x.lower() in ("true", "1", "yes"):
-                                    return True
-                                elif x.lower() in ("false", "0", "no"):
-                                    return False
-                                raise argparse.ArgumentTypeError(f"Invalid boolean value: {x}")
-
-                            type = get_boolean
-
-                        # Check if attr_value is a callable (potential default factory)
-                    default_factory: Optional[Callable[[], object]] = None
-                    default_value: Optional[object] = attr_value
-
-                    # If attr_value is callable and not a type, treat it as default_factory
-                    if callable(attr_value) and not inspect.isclass(attr_value) and attr_value is not type:
-                        default_factory = attr_value
-                        default_value = None
-
-                    spec: ArgumentSpec[object] = ArgumentSpec(
-                        name_or_flags=[sanitize_name(attr_name)],
-                        default=default_value,
-                        default_factory=default_factory,
-                        required=default_value is None and default_factory is None and not is_optional(attr_hint),
-                        help=docstrings.get(attr_name, ""),
-                        action=action,
-                        type=type,
+                    spec, attr_hint = _infer_spec_and_correct_typehint_from_nonspec_typehint(
+                        attr_name=attr_name,
+                        attr_hint=attr_hint,
+                        attr_value=attr_value,
+                        docstrings=docstrings,
                     )
 
                 if attr_name in cls.__arguments__:
@@ -600,3 +570,56 @@ def _get_type_hints(obj: type) -> Iterator[Tuple[str, object]]:
     for k, v in get_type_hints(obj, include_extras=True).items():
         if k not in ignored_annotations:
             yield k, v
+
+
+def _infer_spec_and_correct_typehint_from_nonspec_typehint(attr_name: str, attr_hint: object, attr_value: object, docstrings: Dict[str, str]) -> Tuple[ArgumentSpec[object], object]:
+    action: Optional[Action] = None
+    type: Optional[Callable[[str], object]] = None
+    if get_origin(attr_hint) is Annotated:
+        args = get_args(attr_hint)
+        attr_hint = args[0]
+        callable_metadata = next((a for a in args[1:] if callable(a)), None)
+    else:
+        callable_metadata: Optional[Callable[[str], object]] = None
+
+    if callable_metadata is not None:
+        type = callable_metadata
+        if get_arguments_of_container_types(type_no_optional_or_spec=attr_hint, container_types=(list, tuple)):
+            attr_hint = get_type_of_element_of_container_types(type_no_optional_or_spec=ensure_no_optional(attr_hint), container_types=(list, tuple))
+    elif attr_hint is bool:
+        if attr_value is False:
+            # If the default is False, we want to set action to store_true
+            action = "store_true"
+        elif attr_value is True:
+            # If the default is True, we want to set action to store_false
+            action = "store_false"
+        else:
+            # If the default is None, we want to get explicit boolean value
+            def get_boolean(x: str) -> bool:
+                if x.lower() in ("true", "1", "yes"):
+                    return True
+                elif x.lower() in ("false", "0", "no"):
+                    return False
+                raise argparse.ArgumentTypeError(f"Invalid boolean value: {x}")
+
+            type = get_boolean
+
+    # Check if attr_value is a callable (potential default factory)
+    default_factory: Optional[Callable[[], object]] = None
+    default_value: Optional[object] = attr_value
+
+    # If attr_value is callable and not a type, treat it as default_factory
+    if callable(attr_value) and not inspect.isclass(attr_value) and attr_value is not type:
+        default_factory = attr_value
+        default_value = None
+
+    spec = ArgumentSpec(
+        name_or_flags=[sanitize_name(attr_name)],
+        default=default_value,
+        default_factory=default_factory,
+        required=default_value is None and default_factory is None and not is_optional(attr_hint),
+        help=docstrings.get(attr_name, ""),
+        action=action,
+        type=type,
+    )
+    return spec, attr_hint
