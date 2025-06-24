@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from inspect import getdoc
 from typing import TYPE_CHECKING, Callable, Generic, Optional, Type, TypeVar
 
-from ._typing import unwrap_callable
+from ._typing import sanitize_name, unwrap_callable
 
 if TYPE_CHECKING:
     from .base import BaseArguments
@@ -26,14 +26,20 @@ class SubcommandSpec(Generic[S]):
     """Detailed description of the subcommand."""
 
     # Private field to cache the result of factory function
-    _cached_argument_class: Optional[Type[S]] = field(default=None, init=False, repr=False)
+    _cached_argument_class: Optional[Type[S]] = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         """Validate that either argument_class or argument_class_factory is provided."""
         if self.argument_class is None and self.argument_class_factory is None:
-            raise ValueError("Either argument_class or argument_class_factory must be provided")
+            raise ValueError(
+                "Either argument_class or argument_class_factory must be provided"
+            )
         if self.argument_class is not None and self.argument_class_factory is not None:
-            raise ValueError("Only one of argument_class or argument_class_factory should be provided")
+            raise ValueError(
+                "Only one of argument_class or argument_class_factory should be provided"
+            )
 
     def get_argument_class(self) -> Type[S]:
         """Get the argument class, either directly or from the factory."""
@@ -50,7 +56,12 @@ class SubcommandSpec(Generic[S]):
             raise ValueError("No argument class or factory available")
 
 
-def subcommand(name: Optional[str] = None, help: str = "", description: Optional[str] = None, argument_class: Optional[Type[S]] = None) -> Callable[[Callable[..., Type[S]]], SubcommandSpec[S]]:
+def subcommand(
+    name: Optional[str] = None,
+    help: str = "",
+    description: Optional[str] = None,
+    argument_class: Optional[Type[S]] = None,
+) -> Callable[[Callable[..., Type[S]]], SubcommandSpec[S]]:
     """
     Decorator to automatically create SubcommandSpec from a method.
 
@@ -115,7 +126,7 @@ def subcommand(name: Optional[str] = None, help: str = "", description: Optional
         unwrapped_func = unwrap_callable(func)
 
         # Extract name from function name if not provided
-        subcommand_name = name if name is not None else unwrapped_func.__name__
+        subcommand_name: str = name or sanitize_name(unwrapped_func.__name__)
 
         # Extract help from docstring if not provided
         func_help: str = help
@@ -133,7 +144,12 @@ def subcommand(name: Optional[str] = None, help: str = "", description: Optional
         # Determine argument_class or argument_class_factory
         if argument_class is not None:
             # Use provided argument_class directly
-            return SubcommandSpec(name=subcommand_name, argument_class=argument_class, help=func_help, description=func_description)
+            return SubcommandSpec(
+                name=subcommand_name,
+                argument_class=argument_class,
+                help=func_help,
+                description=func_description,
+            )
         else:
             # Always use the function as a factory
             def argument_class_factory() -> Type[S]:
@@ -144,8 +160,15 @@ def subcommand(name: Optional[str] = None, help: str = "", description: Optional
                     return result  # pyright: ignore[reportReturnType]
                 except TypeError:
                     # If there's still a TypeError, the function probably has other required parameters
-                    raise ValueError(f"Method '{unwrapped_func.__name__}' cannot be used as a factory. Make sure it has no required parameters (including 'self').")
+                    raise ValueError(
+                        f"Method '{unwrapped_func.__name__}' cannot be used as a factory. Make sure it has no required parameters (including 'self')."
+                    )
 
-            return SubcommandSpec(name=subcommand_name, argument_class_factory=argument_class_factory, help=func_help, description=func_description)
+            return SubcommandSpec(
+                name=subcommand_name,
+                argument_class_factory=argument_class_factory,
+                help=func_help,
+                description=func_description,
+            )
 
     return decorator

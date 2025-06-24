@@ -2,9 +2,11 @@
 """Test script for default factory functionality in spargear."""
 
 import datetime
+import unittest
 import uuid
-from typing import List, Optional, Union, Callable
-from spargear import BaseArguments, ArgumentSpec
+from typing import Callable, List, Optional, Union
+
+from spargear import ArgumentSpec, BaseArguments
 
 
 class MyArguments(BaseArguments):
@@ -15,7 +17,9 @@ class MyArguments(BaseArguments):
     """Name of the user"""
 
     # Default factory using lambda
-    timestamp: Union[str, Callable[[], str]] = lambda: datetime.datetime.now().isoformat()
+    timestamp: Union[str, Callable[[], str]] = (
+        lambda: datetime.datetime.now().isoformat()
+    )
     """Current timestamp (generated at parse time)"""
 
     # Default factory using function
@@ -38,39 +42,42 @@ class MyArguments(BaseArguments):
     """List of tags"""
 
 
-def test_default_factory() -> None:
-    """Test the default factory functionality."""
-    print("Testing default factory functionality...")
+class TestDefaultFactory(unittest.TestCase):
+    def test_default_factory(self) -> None:
+        """Test the default factory functionality."""
+        print("Testing default factory functionality...")
 
-    # Test 1: No arguments provided - should use default factories
-    print("\n=== Test 1: No arguments ===")
-    args1 = MyArguments([])
-    print(f"name: {args1.get('name')}")
-    print(f"timestamp: {args1.get('timestamp')}")
-    print(f"session_id: {args1.get('session_id')}")
-    print(f"log_file: {args1.get('log_file')}")
-    print(f"config_file: {args1.get('config_file')}")
-    print(f"tags: {args1.get('tags')}")
+        # Test 1: No arguments provided - should use default factories
+        print("\n=== Test 1: No arguments ===")
+        args1 = MyArguments([])
+        print(f"name: {args1.get('name')}")
+        print(f"timestamp: {args1.get('timestamp')}")
+        print(f"session_id: {args1.get('session_id')}")
+        print(f"log_file: {args1.get('log_file')}")
+        print(f"config_file: {args1.get('config_file')}")
+        print(f"tags: {args1.get('tags')}")
 
-    # Test 2: Some arguments provided
-    print("\n=== Test 2: Some arguments provided ===")
-    args2 = MyArguments(["--name", "custom_name", "--config-file", "config.yaml"])
-    print(f"name: {args2.get('name')}")
-    print(f"timestamp: {args2.get('timestamp')}")
-    print(f"session_id: {args2.get('session_id')}")
-    print(f"log_file: {args2.get('log_file')}")
-    print(f"config_file: {args2.get('config_file')}")
-    print(f"tags: {args2.get('tags')}")
+        # Test 2: Some arguments provided
+        print("\n=== Test 2: Some arguments provided ===")
+        args2 = MyArguments(["--name", "custom_name", "--config-file", "config.yaml"])
+        print(f"name: {args2.get('name')}")
+        print(f"timestamp: {args2.get('timestamp')}")
+        print(f"session_id: {args2.get('session_id')}")
+        print(f"log_file: {args2.get('log_file')}")
+        print(f"config_file: {args2.get('config_file')}")
+        print(f"tags: {args2.get('tags')}")
 
-    # Test 3: Verify that default factories generate different values
-    print("\n=== Test 3: Different instances have different generated values ===")
-    args3 = MyArguments([])
-    args4 = MyArguments([])
+        # Test 3: Verify that default factories generate different values
+        print("\n=== Test 3: Different instances have different generated values ===")
+        args3 = MyArguments([])
+        args4 = MyArguments([])
 
-    print(f"args3 session_id: {args3.get('session_id')}")
-    print(f"args4 session_id: {args4.get('session_id')}")
-    print(f"Session IDs are different: {args3.get('session_id') != args4.get('session_id')}")
+        print(f"args3 session_id: {args3.get('session_id')}")
+        print(f"args4 session_id: {args4.get('session_id')}")
+        print(
+            f"Session IDs are different: {args3.get('session_id') != args4.get('session_id')}"
+        )
 
 
 if __name__ == "__main__":
-    test_default_factory()
+    unittest.main()
