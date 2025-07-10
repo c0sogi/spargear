@@ -8,6 +8,7 @@ from dataclasses import field, make_dataclass
 from pathlib import Path
 from traceback import print_exc
 from typing import (
+    IO,
     Any,
     Callable,
     Dict,
@@ -52,9 +53,7 @@ class BaseArguments:
     def last_subcommand(self) -> Optional["BaseArguments"]:
         return self.__subcommand
 
-    def __init__(
-        self, args: Optional[Sequence[str]] = None, _internal_init: bool = False
-    ) -> None:
+    def __init__(self, args: Optional[Sequence[str]] = None, _internal_init: bool = False) -> None:
         """
         Initializes the BaseArguments instance and loads arguments from the command line or a given list of arguments.
         If no arguments are provided, it uses sys.argv[1:] by default.
@@ -109,9 +108,7 @@ class BaseArguments:
             self.__subcommand = current_inst
 
     def __getitem__(self, key: str) -> Optional[object]:
-        return self.__instance_values__.get(
-            key, self.__class__.__arguments__[key][0].value
-        )
+        return self.__instance_values__.get(key, self.__class__.__arguments__[key][0].value)
 
     def __getattribute__(self, name: str) -> object:
         """Override attribute access to return instance-specific ArgumentSpec objects or values."""
@@ -178,25 +175,19 @@ class BaseArguments:
                 if isinstance(attr_value, ArgumentSpec):
                     spec: ArgumentSpec[object] = cast(ArgumentSpec[object], attr_value)
                 else:
-                    spec, attr_hint = (
-                        _infer_spec_and_correct_typehint_from_nonspec_typehint(
-                            attr_name=attr_name,
-                            type_no_spec=attr_hint,
-                            attr_value=attr_value,
-                            docstrings=docstrings,
-                        )
+                    spec, attr_hint = _infer_spec_and_correct_typehint_from_nonspec_typehint(
+                        attr_name=attr_name,
+                        type_no_spec=attr_hint,
+                        attr_value=attr_value,
+                        docstrings=docstrings,
                     )
 
                 if attr_name in cls.__arguments__:
-                    logger.debug(
-                        f"Duplicate argument name '{attr_name}' in {current_cls.__name__}."
-                    )
+                    logger.debug(f"Duplicate argument name '{attr_name}' in {current_cls.__name__}.")
 
                 try:
                     # Extract type information from type hint
-                    spec_type: ArgumentSpecType = ArgumentSpecType.from_type_hint(
-                        attr_hint
-                    )
+                    spec_type: ArgumentSpecType = ArgumentSpecType.from_type_hint(attr_hint)
 
                     # Set `choices` and `type`
                     if literals := spec_type.choices:
@@ -207,25 +198,17 @@ class BaseArguments:
                     # Determine `nargs` depending on list/tuple type
                     if tn := spec_type.tuple_nargs:
                         spec.nargs = tn
-                    elif (
-                        spec.nargs is None
-                        and spec_type.should_return_as_list
-                        or spec_type.should_return_as_tuple
-                    ):
+                    elif spec.nargs is None and spec_type.should_return_as_list or spec_type.should_return_as_tuple:
                         spec.nargs = "*"
 
                     cls.__arguments__[attr_name] = (spec, spec_type)
                 except Exception as e:
                     print_exc()
-                    logger.warning(
-                        f"Error processing {attr_name} in {current_cls.__name__}: {e}"
-                    )
+                    logger.warning(f"Error processing {attr_name} in {current_cls.__name__}: {e}")
                     continue
 
     def get(self, key: str) -> Optional[object]:
-        return self.__instance_values__.get(
-            key, self.__class__.__arguments__[key][0].value
-        )
+        return self.__instance_values__.get(key, self.__class__.__arguments__[key][0].value)
 
     def keys(self) -> Iterable[str]:
         yield from (k for k, _v in self.items())
@@ -263,11 +246,7 @@ class BaseArguments:
                 value = spec.default
 
             # Determine the field type
-            field_type = (
-                spec_type.type_no_optional_or_spec
-                if spec_type.type_no_optional_or_spec is not object
-                else Any
-            )
+            field_type = spec_type.type_no_optional_or_spec if spec_type.type_no_optional_or_spec is not object else Any
             if not isinstance(field_type, type):
                 field_type = Any
 
@@ -318,9 +297,7 @@ class BaseArguments:
 
         return result
 
-    def to_json(
-        self, file_path: Optional[Union[str, Path]] = None, **kwargs: Any
-    ) -> str:
+    def to_json(self, file_path: Optional[Union[str, Path]] = None, **kwargs: Any) -> str:
         """Serialize the BaseArguments instance to JSON.
 
         Args:
@@ -348,15 +325,17 @@ class BaseArguments:
 
         return json_str
 
-    def to_pickle(self, file_path: Union[str, Path]) -> None:
+    def to_pickle(self, file_path: Union[str, Path, IO[bytes]]) -> None:
         """Serialize the BaseArguments instance to a pickle file.
 
         Args:
             file_path: File path to save the pickle data.
         """
-        data = self.to_dict()
-        with open(file_path, "wb") as f:
-            pickle.dump(data, f)
+        if isinstance(file_path, (str, Path)):
+            with open(file_path, "wb") as f:
+                pickle.dump(self, f)
+        else:
+            pickle.dump(self, file_path)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], args: Optional[Sequence[str]] = None):
@@ -387,18 +366,13 @@ class BaseArguments:
                     ):
                         instance.__instance_values__[key] = value
                         # Also update instance specs if they exist
-                        if (
-                            hasattr(instance, "__instance_specs__")
-                            and key in instance.__instance_specs__
-                        ):
+                        if hasattr(instance, "__instance_specs__") and key in instance.__instance_specs__:
                             instance.__instance_specs__[key].value = value
 
         return instance
 
     @classmethod
-    def from_json(
-        cls, json_data: Union[str, Path], args: Optional[Sequence[str]] = None
-    ):
+    def from_json(cls, json_data: Union[str, Path], args: Optional[Sequence[str]] = None):
         """Create a BaseArguments instance from JSON data.
 
         Args:
@@ -418,22 +392,27 @@ class BaseArguments:
         return cls.from_dict(data, args)
 
     @classmethod
-    def from_pickle(
-        cls, file_path: Union[str, Path], args: Optional[Sequence[str]] = None
-    ):
+    def from_pickle(cls, path_or_bytes: Union[str, Path, bytes], args: Optional[Sequence[str]] = None):
         """Create a BaseArguments instance from a pickle file.
 
         Args:
-            file_path: Path to the pickle file.
+            path_or_bytes: Path to the pickle file or bytes data.
             args: Optional command line arguments to parse first.
 
         Returns:
             A new BaseArguments instance with values from the pickle file.
         """
-        with open(file_path, "rb") as f:
-            data = pickle.load(f)
+        if isinstance(path_or_bytes, bytes):
+            # If file_path is bytes, assume it's a serialized BaseArguments instance
+            data = pickle.loads(path_or_bytes)
 
-        return cls.from_dict(data, args)
+        else:
+            with open(path_or_bytes, "rb") as f:
+                data = pickle.load(f)
+        if isinstance(data, cls):
+            return data
+        else:
+            raise ValueError("Bytes data does not represent a BaseArguments instance.")
 
     def update_from_dict(self, data: Dict[str, Any]) -> None:
         """Update the current instance with values from a dictionary.
@@ -446,15 +425,10 @@ class BaseArguments:
                 if key in self.__class__.__arguments__:
                     self.__instance_values__[key] = value
                     # Also update instance specs if they exist
-                    if (
-                        hasattr(self, "__instance_specs__")
-                        and key in self.__instance_specs__
-                    ):
+                    if hasattr(self, "__instance_specs__") and key in self.__instance_specs__:
                         self.__instance_specs__[key].value = value
 
-    def save_config(
-        self, file_path: Union[str, Path], format: Literal["json", "pickle"] = "json"
-    ) -> None:
+    def save_config(self, file_path: Union[str, Path], format: Literal["json", "pickle"] = "json") -> None:
         """Save the current configuration to a file.
 
         Args:
@@ -524,10 +498,7 @@ class BaseArguments:
     def __iter_arguments(
         cls,
     ) -> Iterable[Tuple[str, ArgumentSpec[object], ArgumentSpecType]]:
-        yield from (
-            (key, spec, spec_type)
-            for key, (spec, spec_type) in cls.__arguments__.items()
-        )
+        yield from ((key, spec, spec_type) for key, (spec, spec_type) in cls.__arguments__.items())
 
     @classmethod
     def __iter_subcommands(
@@ -546,9 +517,7 @@ class BaseArguments:
         parser.add_argument(*name_or_flags, **kwargs)  # type: ignore
 
     @classmethod
-    def __configure_parser(
-        cls, parser: argparse.ArgumentParser, _depth: int = 0
-    ) -> None:
+    def __configure_parser(cls, parser: argparse.ArgumentParser, _depth: int = 0) -> None:
         # 1) add this class's own arguments
         for key, spec, _ in cls.__iter_arguments():
             kwargs = spec.get_add_argument_kwargs()
@@ -607,9 +576,7 @@ class BaseArguments:
                 continue
 
             checkable_type: Optional[type] = (
-                spec.type
-                if spec.type is not None and isinstance(spec.type, type)
-                else None
+                spec.type if spec.type is not None and isinstance(spec.type, type) else None
             )
 
             # Type check for list/tuple
@@ -649,10 +616,7 @@ class BaseArguments:
         for key, spec, spec_type in self.__class__.__iter_arguments():
             instance_spec = self.__instance_specs__[key]
             # Only apply default factory if no value was set from command line
-            if (
-                key not in self.__instance_values__
-                or self.__instance_values__[key] is None
-            ):
+            if key not in self.__instance_values__ or self.__instance_values__[key] is None:
                 if instance_spec.default_factory is not None:
                     factory_value = instance_spec.default_factory()
                     self.__instance_values__[key] = factory_value
@@ -723,11 +687,7 @@ def _infer_spec_and_correct_typehint_from_nonspec_typehint(
     default_value: Optional[object] = attr_value
 
     # If attr_value is callable and not a type, treat it as default_factory
-    if (
-        callable(attr_value)
-        and not inspect.isclass(attr_value)
-        and attr_value is not type
-    ):
+    if callable(attr_value) and not inspect.isclass(attr_value) and attr_value is not type:
         default_factory = attr_value
         default_value = None
 
