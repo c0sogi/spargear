@@ -253,9 +253,9 @@ Parameters:
 
 #### Serialization
 - `to_dict() -> Dict[str, Any]` - Convert to dictionary
-- `to_json(file_path=None, **kwargs) -> str` - Serialize to JSON
-- `to_pickle(file_path)` - Serialize to pickle file
-- `to_dataclass(class_name=None)` - Convert to dataclass instance
+- `to_json() -> str` - Serialize to JSON
+- `to_pickle() -> bytes` - Serialize to pickle format
+- `to_dataclass()` - Convert to dataclass instance
 
 #### Deserialization
 - `from_dict(data, args=None)` - Create from dictionary

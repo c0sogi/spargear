@@ -91,7 +91,8 @@ class TestSerialization(unittest.TestCase):
 
         # Save to file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            config1.save_config(f.name, format="json")
+            json_str = config1.to_json()
+            f.write(json_str)
             json_file = f.name
 
         try:
@@ -118,10 +119,11 @@ class TestSerialization(unittest.TestCase):
         print("=== Testing Pickle Serialization ===")
 
         config1 = ConfigExample(["--name", "pickleapp", "--debug"])
+        print(config1)  ###
 
         # Save to pickle file
         with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as f:
-            config1.save_config(f.name, format="pickle")
+            f.write(config1.to_pickle())
             pickle_file = f.name
 
         try:
@@ -171,9 +173,7 @@ class TestSerialization(unittest.TestCase):
         }
 
         # Create instance with command line args that override config
-        config = ConfigExample.from_dict(
-            config_data, args=["--port", "6000", "--debug"]
-        )
+        config = ConfigExample.from_dict(config_data, args=["--port", "6000", "--debug"])
 
         print("Config with command line override:")
         print(f"  name: {config.name} (from config)")

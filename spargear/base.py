@@ -8,7 +8,7 @@ from dataclasses import field, make_dataclass
 from pathlib import Path
 from traceback import print_exc
 from typing import (
-    IO,
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -19,8 +19,10 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    Type,
     Union,
     cast,
+    overload,
 )
 
 from ._typing import (
@@ -107,52 +109,73 @@ class BaseArguments:
                 depth += 1
             self.__subcommand = current_inst
 
+    def __str__(self) -> str:
+        """String representation of the BaseArguments instance."""
+        return f"{self.__class__.__name__}({self.to_json(indent=2)})"
+
     def __getitem__(self, key: str) -> Optional[object]:
         return self.__instance_values__.get(key, self.__class__.__arguments__[key][0].value)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Override attribute setting to store values in instance-specific storage."""
+        if name not in self.__arguments__:
+            # If the attribute is not an argument, use normal setattr
+            super().__setattr__(name, value)
+            return
+
+        spec, spec_type = self.__arguments__[name]
+        if spec_type.is_specless_type:
+            # If it's a specless type, store the value directly
+            self.__instance_values__[name] = value
+            return
+
+        # For ArgumentSpec types, assign the value to the instance-specific spec
+        instance_specs = self.__instance_specs__
+        if name in self.__instance_specs__:
+            # If the spec exists in instance_specs, update its value
+            instance_specs[name].value = value
+        else:
+            # Create a new instance copy of the spec if it doesn't exist
+            instance_spec: ArgumentSpec[object] = deepcopy(spec)
+            instance_spec.value = value
+            instance_specs[name] = instance_spec
 
     def __getattribute__(self, name: str) -> object:
         """Override attribute access to return instance-specific ArgumentSpec objects or values."""
         # For special attributes, use normal access
-        if name.startswith("_") or name in (
-            "last_subcommand",
-            "get",
-            "keys",
-            "values",
-            "items",
-        ):
+        if TYPE_CHECKING:
+            arguments = self.__arguments__
+        else:
+            arguments = super().__getattribute__("__arguments__")
+
+        if name not in arguments:
             return super().__getattribute__(name)
 
-        # Check if this is an ArgumentSpec attribute
-        try:
-            cls = super().__getattribute__("__class__")
-            if hasattr(cls, "__arguments__") and name in cls.__arguments__:
-                spec, spec_type = cls.__arguments__[name]
+        if TYPE_CHECKING:
+            instance_values = self.__instance_values__
+            instance_specs = self.__instance_specs__
+        else:
+            instance_values = super().__getattribute__("__instance_values__")
+            instance_specs = super().__getattribute__("__instance_specs__")
 
-                # For specless types, return the actual value
-                if spec_type.is_specless_type:
-                    instance_values = super().__getattribute__("__instance_values__")
-                    if name in instance_values:
-                        return instance_values[name]
-                    else:
-                        # Return the default value or None
-                        return spec.default
+        spec, spec_type = arguments[name]
 
-                # For ArgumentSpec types, return the instance-specific spec
-                instance_specs = super().__getattribute__("__instance_specs__")
-                if name in instance_specs:
-                    return instance_specs[name]
-                else:
-                    # Create instance copy if not exists
-                    import copy
+        # For specless types, return the actual value if it exists
+        if spec_type.is_specless_type:
+            if name in instance_values:
+                # If the value is already set in instance_values, return it
+                return instance_values[name]
+            return spec.default
 
-                    instance_spec = copy.deepcopy(spec)
-                    instance_specs[name] = instance_spec
-                    return instance_spec
-        except AttributeError:
-            pass
+        # For ArgumentSpec types, return the instance-specific spec
+        if name in instance_specs:
+            # If the spec exists in instance_specs, return it
+            return instance_specs[name]
 
-        # Use normal attribute access for everything else
-        return super().__getattribute__(name)
+        # Create a new instance copy of the spec if it doesn't exist
+        instance_spec: ArgumentSpec[object] = deepcopy(spec)
+        instance_specs[name] = instance_spec
+        return instance_spec
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -278,13 +301,13 @@ class BaseArguments:
         # Create instance with current values
         return DataclassType(**field_values)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> Dict[str, object]:
         """Convert the BaseArguments instance to a dictionary.
 
         Returns:
             A dictionary with all argument names and their values.
         """
-        result: Dict[str, Any] = {}
+        result: Dict[str, object] = {}
         for key, spec, _ in self.__class__.__iter_arguments():
             if hasattr(self, "__instance_values__") and key in self.__instance_values__:
                 value = self.__instance_values__[key]
@@ -297,20 +320,24 @@ class BaseArguments:
 
         return result
 
-    def to_json(self, file_path: Optional[Union[str, Path]] = None, **kwargs: Any) -> str:
-        """Serialize the BaseArguments instance to JSON.
-
-        Args:
-            file_path: Optional file path to save the JSON. If provided, saves to file.
-            **kwargs: Additional arguments passed to json.dumps().
-
-        Returns:
-            JSON string representation.
-        """
+    def to_json(
+        self,
+        skipkeys: bool = False,
+        ensure_ascii: bool = True,
+        check_circular: bool = True,
+        allow_nan: bool = True,
+        cls: Optional[Type[json.JSONEncoder]] = None,
+        indent: Optional[Union[int, str]] = None,
+        separators: Optional[Tuple[str, str]] = None,
+        default: Optional[Callable[[object], object]] = None,
+        sort_keys: bool = False,
+        **kwds: Any,
+    ) -> str:
+        """Serialize the BaseArguments instance to JSON."""
         data = self.to_dict()
 
         # Convert non-serializable types
-        def json_serializer(obj: Any) -> Any:
+        def default_fallback(obj: object) -> object:
             if isinstance(obj, Path):
                 return str(obj)
             elif hasattr(obj, "__dict__"):
@@ -318,24 +345,71 @@ class BaseArguments:
             else:
                 return str(obj)
 
-        json_str = json.dumps(data, default=json_serializer, indent=2, **kwargs)
-
-        if file_path:
-            Path(file_path).write_text(json_str, encoding="utf-8")
+        json_str = json.dumps(
+            data,
+            skipkeys=skipkeys,
+            ensure_ascii=ensure_ascii,
+            check_circular=check_circular,
+            allow_nan=allow_nan,
+            cls=cls,
+            indent=indent,
+            separators=separators,
+            default=default or default_fallback,
+            sort_keys=sort_keys,
+            **kwds,
+        )
 
         return json_str
 
-    def to_pickle(self, file_path: Union[str, Path, IO[bytes]]) -> None:
-        """Serialize the BaseArguments instance to a pickle file.
+    @overload
+    def to_pickle(
+        self,
+        protocol: Optional[int] = None,
+        *,
+        fix_imports: bool = True,
+        buffer_callback: Optional[Callable[[object], None]] = None,
+        pickler: pickle.Pickler,
+    ) -> None: ...
+    @overload
+    def to_pickle(
+        self,
+        protocol: Optional[int] = None,
+        *,
+        fix_imports: bool = True,
+        buffer_callback: Optional[Callable[[object], None]] = None,
+        pickler: None = None,
+    ) -> bytes: ...
+    def to_pickle(
+        self,
+        protocol: Optional[int] = None,
+        *,
+        fix_imports: bool = True,
+        buffer_callback: Optional[Callable[[object], None]] = None,
+        pickler: Optional[pickle.Pickler] = None,
+    ) -> Optional[bytes]:
+        """Serialize the BaseArguments instance to a pickle file."""
 
-        Args:
-            file_path: File path to save the pickle data.
-        """
-        if isinstance(file_path, (str, Path)):
-            with open(file_path, "wb") as f:
-                pickle.dump(self, f)
-        else:
-            pickle.dump(self, file_path)
+        # Remove all lambda-based default factories
+        for key, spec in self.__instance_specs__.items():
+            if spec.default_factory is not None and callable(spec.default_factory):
+                logger.warning(f"Removing default_factory from {spec.name_or_flags} in {self.__class__.__name__}.")
+                spec.default_factory = None
+                spec_and_spectype = self.__arguments__.get(key)
+                if spec_and_spectype is None:
+                    continue
+                spec, _ = spec_and_spectype
+                if spec.default_factory is not None and callable(spec.default_factory):
+                    spec.default_factory = None
+
+        # If a pickler is provided, use it to serialize
+        if pickler is None:
+            # If no pickler is provided, use default pickle serialization
+            return pickle.dumps(self, protocol=protocol, fix_imports=fix_imports, buffer_callback=buffer_callback)
+
+        # If a pickler is provided, use it to serialize
+        # This allows for custom pickling behavior if needed
+        pickler.dump(self)
+        return None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], args: Optional[Sequence[str]] = None):
@@ -427,20 +501,6 @@ class BaseArguments:
                     # Also update instance specs if they exist
                     if hasattr(self, "__instance_specs__") and key in self.__instance_specs__:
                         self.__instance_specs__[key].value = value
-
-    def save_config(self, file_path: Union[str, Path], format: Literal["json", "pickle"] = "json") -> None:
-        """Save the current configuration to a file.
-
-        Args:
-            file_path: Path to save the configuration.
-            format: File format, either "json" or "pickle".
-        """
-        if format == "json":
-            self.to_json(file_path)
-        elif format == "pickle":
-            self.to_pickle(file_path)
-        else:
-            raise ValueError(f"Unsupported format: {format}. Use 'json' or 'pickle'.")
 
     @classmethod
     def load_config(
@@ -609,8 +669,6 @@ class BaseArguments:
             self.__instance_values__[key] = val
             # Update the instance-specific spec
             instance_spec.value = val
-            if spec_type.is_specless_type:
-                setattr(self, key, val)
 
         # Apply default factories after all values are loaded
         for key, spec, spec_type in self.__class__.__iter_arguments():
@@ -622,8 +680,6 @@ class BaseArguments:
                     self.__instance_values__[key] = factory_value
                     # Update the instance-specific spec
                     instance_spec.value = factory_value
-                    if spec_type.is_specless_type:
-                        setattr(self, key, factory_value)
 
 
 ignored_annotations = tuple(get_type_hints(BaseArguments).keys())
