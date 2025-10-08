@@ -22,9 +22,7 @@ if version := environ.get("SPARGEAR_TEST_PYTHON_VERSION"):
         print(from_str)
         exec(from_str)
 
-    print(
-        f"{GREEN}========== [*] Running tests ... {YELLOW}[{VERSION}]{GREEN} =========={RESET}"
-    )
+    print(f"{GREEN}========== [*] Running tests ... {YELLOW}[{VERSION}]{GREEN} =========={RESET}")
     import unittest
 
     unittest.main()

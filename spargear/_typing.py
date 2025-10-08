@@ -5,6 +5,7 @@ import logging
 import sys
 import textwrap
 import types
+from enum import Enum
 from functools import partial
 
 if sys.version_info < (3, 9):
@@ -12,6 +13,7 @@ if sys.version_info < (3, 9):
 
 else:
     import typing
+
 
 Annotated = typing.Annotated
 get_type_hints = typing.get_type_hints
@@ -42,9 +44,7 @@ Action = typing.Optional[
     ]
 ]
 ContainerTypes = typing.Tuple[
-    typing.Union[
-        typing.Type[typing.List[object]], typing.Type[typing.Tuple[object, ...]]
-    ],
+    typing.Union[typing.Type[typing.List[object]], typing.Type[typing.Tuple[object, ...]]],
     ...,
 ]
 
@@ -90,9 +90,9 @@ def get_args(obj: object) -> typing.Tuple[object, ...]:
 
 def get_union_args(t: object) -> typing.Tuple[object, ...]:
     origin = get_origin(t)
-    if origin is typing.Union:
+    if origin == typing.Union:
         return get_args(t)
-    if sys.version_info >= (3, 10) and origin is types.UnionType:
+    if sys.version_info >= (3, 10) and origin == types.UnionType:
         return get_args(t)
     return ()
 
@@ -129,15 +129,11 @@ def ensure_no_optional(t: object) -> object:
 def get_arguments_of_container_types(
     type_no_optional_or_spec: object, container_types: ContainerTypes
 ) -> typing.Optional[typing.Tuple[object, ...]]:
-    if isinstance(type_no_optional_or_spec, type) and issubclass(
-        type_no_optional_or_spec, container_types
-    ):
+    if isinstance(type_no_optional_or_spec, type) and issubclass(type_no_optional_or_spec, container_types):
         return ()
 
     type_no_optional_or_spec = typing.cast(object, type_no_optional_or_spec)
-    type_no_optional_or_spec_origin: typing.Optional[object] = get_origin(
-        type_no_optional_or_spec
-    )
+    type_no_optional_or_spec_origin: typing.Optional[object] = get_origin(type_no_optional_or_spec)
     if isinstance(type_no_optional_or_spec_origin, type) and issubclass(
         type_no_optional_or_spec_origin, container_types
     ):
@@ -158,25 +154,34 @@ def get_type_of_element_of_container_types(
         return next((it for it in iterable_arguments if isinstance(it, type)), None)
 
 
-def get_literals(
+def get_choices(
     type_no_optional_or_spec: object, container_types: ContainerTypes
 ) -> typing.Optional[typing.Tuple[object, ...]]:
     """Get the literals of the list element type."""
-    if get_origin(type_no_optional_or_spec) is typing.Literal:
-        # Extract literals from Literal type
-        return get_args(type_no_optional_or_spec)
 
-    elif (
-        arguments_of_container_types := get_arguments_of_container_types(
-            type_no_optional_or_spec=type_no_optional_or_spec,
-            container_types=container_types,
-        )
-    ) and get_origin(
-        first_argument_of_container_types := arguments_of_container_types[0]
-    ) is typing.Literal:
-        # Extract literals from List[Literal] or Tuple[Literal, ...]
-        return get_args(first_argument_of_container_types)
-    return None
+    def parse_choices(t: object) -> typing.Optional[typing.Tuple[object, ...]]:
+        origin = get_origin(t)
+        if origin == typing.Literal:
+            return get_args(t)
+        elif origin is type(Enum):
+            enum_cls = typing.cast(typing.Type[Enum], t)
+            return tuple(e.name for e in enum_cls)
+        return None
+
+    if determined := parse_choices(type_no_optional_or_spec):
+        return determined
+    arguments_of_container_types = get_arguments_of_container_types(
+        type_no_optional_or_spec=type_no_optional_or_spec,
+        container_types=container_types,
+    )
+    if not arguments_of_container_types:
+        return None
+
+    choices: typing.Tuple[object, ...] = ()
+    for argument in arguments_of_container_types:
+        if determined := parse_choices(argument):
+            choices += determined
+    return choices or None
 
 
 def extract_attr_docstrings(cls: typing.Type[object]) -> typing.Dict[str, str]:
@@ -192,9 +197,7 @@ def extract_attr_docstrings(cls: typing.Type[object]) -> typing.Dict[str, str]:
         docstrings: typing.Dict[str, str] = {}
         last_attr: typing.Optional[str] = None
 
-        class_def = next(
-            (node for node in source_ast.body if isinstance(node, ast.ClassDef)), None
-        )
+        class_def = next((node for node in source_ast.body if isinstance(node, ast.ClassDef)), None)
         if class_def is None:
             return {}
 
@@ -241,6 +244,6 @@ def unwrap_callable(func: typing.Callable[..., object]) -> typing.Callable[..., 
 
 def assert_type(val: object, type_: type) -> None:
     """Assert that the value is of the given type."""
-    
+
     if not isinstance(val, type_):
         raise TypeError(f"Value `{val}` is not of type `{type_}`")

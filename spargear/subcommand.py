@@ -26,20 +26,14 @@ class SubcommandSpec(Generic[S]):
     """Detailed description of the subcommand."""
 
     # Private field to cache the result of factory function
-    _cached_argument_class: Optional[Type[S]] = field(
-        default=None, init=False, repr=False
-    )
+    _cached_argument_class: Optional[Type[S]] = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate that either argument_class or argument_class_factory is provided."""
         if self.argument_class is None and self.argument_class_factory is None:
-            raise ValueError(
-                "Either argument_class or argument_class_factory must be provided"
-            )
+            raise ValueError("Either argument_class or argument_class_factory must be provided")
         if self.argument_class is not None and self.argument_class_factory is not None:
-            raise ValueError(
-                "Only one of argument_class or argument_class_factory should be provided"
-            )
+            raise ValueError("Only one of argument_class or argument_class_factory should be provided")
 
     def get_argument_class(self) -> Type[S]:
         """Get the argument class, either directly or from the factory."""

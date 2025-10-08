@@ -13,7 +13,7 @@ class TestGetSetAttr(unittest.TestCase):
             attr3: ArgumentSpec[str] = ArgumentSpec(name_or_flags=["--attr3"], default="spec_default")
             attr4: ArgumentSpec[int] = ArgumentSpec(name_or_flags=["--attr4"], default_factory=lambda: 100)
 
-        args = ExampleArgs()
+        args = ExampleArgs([])
 
         # Set attributes
         args.attr1 = "new_value"

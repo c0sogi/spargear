@@ -24,7 +24,7 @@ from ._typing import (
     ensure_no_optional,
     get_args,
     get_arguments_of_container_types,
-    get_literals,
+    get_choices,
     get_origin,
     get_type_of_element_of_container_types,
 )
@@ -47,9 +47,7 @@ class ArgumentSpec(Generic[T]):
     help: str = ""
     metavar: Optional[str] = None
     version: Optional[str] = None
-    type: Optional[
-        Union[Callable[[str], T], Type[argparse.FileType], TypedFileType]
-    ] = None
+    type: Optional[Union[Callable[[str], T], Type[argparse.FileType], TypedFileType]] = None
     dest: Optional[str] = None
     value: Optional[T] = field(init=False, default=None)  # Parsed value stored here
 
@@ -68,9 +66,7 @@ class ArgumentSpec(Generic[T]):
         """Prepares keyword arguments for argparse.ArgumentParser.add_argument."""
         kwargs: Dict[str, object] = {}
         argparse_fields: Set[str] = {
-            f.name
-            for f in fields(self)
-            if f.name not in ("name_or_flags", "value", "default_factory")
+            f.name for f in fields(self) if f.name not in ("name_or_flags", "value", "default_factory")
         }
         for field_name in argparse_fields:
             attr_value: object = getattr(self, field_name)
@@ -86,10 +82,7 @@ class ArgumentSpec(Generic[T]):
                 else:
                     kwargs[field_name] = attr_value
             elif attr_value is not None:
-                if (
-                    field_name == "type"
-                    and self.action in ACTION_TYPES_THAT_DONT_SUPPORT_TYPE_KWARG
-                ):
+                if field_name == "type" and self.action in ACTION_TYPES_THAT_DONT_SUPPORT_TYPE_KWARG:
                     continue
                 kwargs[field_name] = attr_value
         return kwargs
@@ -118,7 +111,7 @@ class ArgumentSpecType(NamedTuple):
     @property
     def choices(self) -> Optional[Tuple[object, ...]]:
         """Extract choices from Literal types."""
-        return get_literals(
+        return get_choices(
             type_no_optional_or_spec=self.type_no_optional_or_spec,
             container_types=(list, tuple),
         )
@@ -161,9 +154,7 @@ class ArgumentSpecType(NamedTuple):
     @property
     def tuple_nargs(self) -> Optional[Union[int, Literal["+"]]]:
         """Determine the number of arguments for a tuple type."""
-        if self.should_return_as_tuple and (
-            args := get_args(self.type_no_optional_or_spec)
-        ):
+        if self.should_return_as_tuple and (args := get_args(self.type_no_optional_or_spec)):
             if Ellipsis not in args:
                 return len(args)
             else:

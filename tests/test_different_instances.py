@@ -54,9 +54,7 @@ class TestDifferentInstances(unittest.TestCase):
             args3.get("timestamp"),
         ]
 
-        print(
-            f"\nAll session IDs are unique: {len(set(session_ids)) == len(session_ids)}"
-        )
+        print(f"\nAll session IDs are unique: {len(set(session_ids)) == len(session_ids)}")
         print(f"All timestamps are unique: {len(set(timestamps)) == len(timestamps)}")
 
 

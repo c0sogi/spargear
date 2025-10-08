@@ -21,14 +21,16 @@ class SpeclessBasicArguments(BaseArguments):
 
 class TestSpeclessBasic(unittest.TestCase):
     def test_specless_type_no_optional(self):
-        args = SpeclessBasicArguments([
-            "--float-without-default",
-            "3.14",
-            "--list-of-ints-without-default",
-            "1",
-            "2",
-            "3",
-        ])
+        args = SpeclessBasicArguments(
+            [
+                "--float-without-default",
+                "3.14",
+                "--list-of-ints-without-default",
+                "1",
+                "2",
+                "3",
+            ]
+        )
         self.assertEqual(args.optional_int_with_default, None)
         self.assertEqual(args.optional_int_without_default, None)
         self.assertEqual(args.float_with_default, 0.0)
@@ -37,30 +39,34 @@ class TestSpeclessBasic(unittest.TestCase):
         self.assertEqual(args.list_of_ints_without_default, [1, 2, 3])
 
     def test_specless_type_optional(self):
-        args = SpeclessBasicArguments([
-            "--optional-int-with-default",
-            "3",
-            "--optional-int-without-default",
-            "4",
-            "--float-without-default",
-            "3.14",
-            "--list-of-ints-without-default",
-            "1",
-            "2",
-            "3",
-        ])
+        args = SpeclessBasicArguments(
+            [
+                "--optional-int-with-default",
+                "3",
+                "--optional-int-without-default",
+                "4",
+                "--float-without-default",
+                "3.14",
+                "--list-of-ints-without-default",
+                "1",
+                "2",
+                "3",
+            ]
+        )
         self.assertEqual(args.optional_int_with_default, 3)
         self.assertEqual(args.optional_int_without_default, 4)
 
     def test_specless_type_docs(self):
-        args = SpeclessBasicArguments([
-            "--float-without-default",
-            "3.14",
-            "--list-of-ints-without-default",
-            "1",
-            "2",
-            "3",
-        ])
+        args = SpeclessBasicArguments(
+            [
+                "--float-without-default",
+                "3.14",
+                "--list-of-ints-without-default",
+                "1",
+                "2",
+                "3",
+            ]
+        )
         self.assertEqual(args.__arguments__["float_with_default"][0].help, "float_with_default")
         self.assertEqual(args.__arguments__["list_of_ints_without_default"][0].help, "list_of_ints_without_default")
         self.assertEqual(args.__arguments__["some_argument"][0].help, "some_argument")
@@ -116,12 +122,14 @@ class TestSpeclessBooleanArguments(unittest.TestCase):
         self.assertEqual(args.bool_with_default_false, False)
         self.assertEqual(args.bool_with_default_true, True)
 
-        args = SpeclessBooleanArguments([
-            "--bool-without-default",
-            "False",
-            "--bool-with-default-true",
-            "--bool-with-default-false",
-        ])
+        args = SpeclessBooleanArguments(
+            [
+                "--bool-without-default",
+                "False",
+                "--bool-with-default-true",
+                "--bool-with-default-false",
+            ]
+        )
         self.assertEqual(args.bool_with_default_false, True)
         self.assertEqual(args.bool_with_default_true, False)
 
@@ -236,24 +244,26 @@ class TestAnnotated(unittest.TestCase):
             e: Annotated[int, as_list]  # Wrong case! (anti-pattern)
             f: Annotated[int, as_list] = 1  # Wrong case! (anti-pattern)
 
-        args = SpeclessAnnotated([
-            "--a",
-            "1",
-            "2",
-            "3",
-            "--b",
-            "2",
-            "3",
-            "4",
-            "--c",
-            "3,4,5",
-            "--d",
-            "4,5,6",
-            "--e",
-            "5",
-            "--f",
-            "6",
-        ])
+        args = SpeclessAnnotated(
+            [
+                "--a",
+                "1",
+                "2",
+                "3",
+                "--b",
+                "2",
+                "3",
+                "4",
+                "--c",
+                "3,4,5",
+                "--d",
+                "4,5,6",
+                "--e",
+                "5",
+                "--f",
+                "6",
+            ]
+        )
         self.assertEqual(args.a, [1, 2, 3])
         self.assertEqual(args.b, [2, 3, 4])
         self.assertEqual(args.c, [3, 4, 5])

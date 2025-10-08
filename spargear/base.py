@@ -5,6 +5,7 @@ import logging
 import pickle
 from copy import deepcopy
 from dataclasses import field, make_dataclass
+from enum import Enum
 from pathlib import Path
 from traceback import print_exc
 from typing import (
@@ -213,10 +214,13 @@ class BaseArguments:
                     spec_type: ArgumentSpecType = ArgumentSpecType.from_type_hint(attr_hint)
 
                     # Set `choices` and `type`
-                    if literals := spec_type.choices:
-                        spec.choices = literals
-                    if spec.type is None and (th := spec_type.type):
-                        spec.type = th
+                    if detected_choices := spec_type.choices:
+                        spec.choices = detected_choices
+                    if spec.type is None and (detected_type := spec_type.type):
+                        if isinstance(detected_type, type(Enum)):
+                            spec.type = detected_type.__getitem__
+                        else:
+                            spec.type = detected_type
 
                     # Determine `nargs` depending on list/tuple type
                     if tn := spec_type.tuple_nargs:
@@ -404,7 +408,12 @@ class BaseArguments:
         # If a pickler is provided, use it to serialize
         if pickler is None:
             # If no pickler is provided, use default pickle serialization
-            return pickle.dumps(self, protocol=protocol, fix_imports=fix_imports, buffer_callback=buffer_callback)
+            return pickle.dumps(
+                self,
+                protocol=protocol,
+                fix_imports=fix_imports,
+                buffer_callback=buffer_callback,
+            )
 
         # If a pickler is provided, use it to serialize
         # This allows for custom pickling behavior if needed
@@ -466,7 +475,11 @@ class BaseArguments:
         return cls.from_dict(data, args)
 
     @classmethod
-    def from_pickle(cls, path_or_bytes: Union[str, Path, bytes], args: Optional[Sequence[str]] = None):
+    def from_pickle(
+        cls,
+        path_or_bytes: Union[str, Path, bytes],
+        args: Optional[Sequence[str]] = None,
+    ):
         """Create a BaseArguments instance from a pickle file.
 
         Args:

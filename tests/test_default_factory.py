@@ -17,9 +17,7 @@ class MyArguments(BaseArguments):
     """Name of the user"""
 
     # Default factory using lambda
-    timestamp: Union[str, Callable[[], str]] = (
-        lambda: datetime.datetime.now().isoformat()
-    )
+    timestamp: Union[str, Callable[[], str]] = lambda: datetime.datetime.now().isoformat()
     """Current timestamp (generated at parse time)"""
 
     # Default factory using function
@@ -74,9 +72,7 @@ class TestDefaultFactory(unittest.TestCase):
 
         print(f"args3 session_id: {args3.get('session_id')}")
         print(f"args4 session_id: {args4.get('session_id')}")
-        print(
-            f"Session IDs are different: {args3.get('session_id') != args4.get('session_id')}"
-        )
+        print(f"Session IDs are different: {args3.get('session_id') != args4.get('session_id')}")
 
 
 if __name__ == "__main__":

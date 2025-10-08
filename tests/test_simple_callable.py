@@ -24,9 +24,7 @@ class TestSimpleCallable(unittest.TestCase):
         args2 = SimpleArgs([])
         print(f"args2 session_id: {args2.get('session_id')}")
 
-        print(
-            f"Are they different? {args1.get('session_id') != args2.get('session_id')}"
-        )
+        print(f"Are they different? {args1.get('session_id') != args2.get('session_id')}")
 
 
 if __name__ == "__main__":
