@@ -20,7 +20,6 @@ from ._typing import (
     ACTION_TYPES_THAT_DONT_SUPPORT_TYPE_KWARG,
     SUPPRESS_LITERAL_TYPE,
     Action,
-    TypedFileType,
     ensure_no_optional,
     get_args,
     get_arguments_of_container_types,
@@ -47,7 +46,7 @@ class ArgumentSpec(Generic[T]):
     help: str = ""
     metavar: Optional[str] = None
     version: Optional[str] = None
-    type: Optional[Union[Callable[[str], T], Type[argparse.FileType], TypedFileType]] = None
+    type: Optional[Callable[[str], T]] = None
     dest: Optional[str] = None
     value: Optional[T] = field(init=False, default=None)  # Parsed value stored here
 

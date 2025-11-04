@@ -1,4 +1,4 @@
-from ._typing import SUPPRESS, Action, Annotated, FileProtocol, TypedFileType
+from ._typing import SUPPRESS, Action, Annotated
 from .argspec import ArgumentSpec, ArgumentSpecType
 from .arguments import RunnableArguments, SubcommandArguments
 from .base import BaseArguments
@@ -18,7 +18,5 @@ __all__ = [
     # Utilities
     "SUPPRESS",
     "Action",
-    "FileProtocol",
-    "TypedFileType",
     "Annotated",
 ]

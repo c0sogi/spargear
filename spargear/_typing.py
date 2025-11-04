@@ -1,4 +1,3 @@
-import argparse
 import ast
 import inspect
 import logging
@@ -50,29 +49,6 @@ ContainerTypes = typing.Tuple[
 
 logger = logging.getLogger(__name__)
 
-
-class FileProtocol(typing.Protocol):
-    """A protocol that defines the methods expected from file-like objects."""
-
-    def read(self, n: int = -1) -> str: ...
-    def write(self, s: str) -> int: ...
-    def close(self) -> None: ...
-
-
-class TypedFileType:
-    """A wrapper around argparse. FileType that returns FileProtocol compatible objects."""
-
-    def __init__(
-        self,
-        mode: str,
-        bufsize: int = -1,
-        encoding: typing.Optional[str] = None,
-        errors: typing.Optional[str] = None,
-    ) -> None:
-        self.file_type = argparse.FileType(mode, bufsize, encoding, errors)
-
-    def __call__(self, string: str) -> typing.Union[typing.IO[str], typing.IO[bytes]]:
-        return self.file_type(string)
 
 
 def get_origin(obj: object) -> typing.Optional[object]:

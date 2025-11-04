@@ -1,9 +1,10 @@
+from io import BytesIO, TextIOWrapper
 import os
 import tempfile
 import unittest
 from typing import List, Literal, Optional, Tuple
 
-from spargear import SUPPRESS, FileProtocol, TypedFileType, ArgumentSpec, BaseArguments
+from spargear import SUPPRESS, ArgumentSpec, BaseArguments
 
 
 class SimpleArguments(BaseArguments):
@@ -19,11 +20,15 @@ class SimpleArguments(BaseArguments):
     my_list_arg: ArgumentSpec[List[str]] = ArgumentSpec(
         ["--list-values"], nargs=3, help="One or more values.", default=None
     )
-    input_file: ArgumentSpec[FileProtocol] = ArgumentSpec(
-        ["input_file"], type=TypedFileType("r", encoding="utf-8"), help="Input file", metavar="INPUT"
+    input_file: ArgumentSpec[TextIOWrapper] = ArgumentSpec(
+        ["input_file"], type=lambda x: TextIOWrapper(BytesIO(x.encode("utf-8"))), help="Input file", metavar="INPUT"
     )
-    output_file: ArgumentSpec[Optional[FileProtocol]] = ArgumentSpec(
-        ["output_file"], type=TypedFileType("w", encoding="utf-8"), nargs="?", default=None, help="Output file"
+    output_file: ArgumentSpec[Optional[TextIOWrapper]] = ArgumentSpec(
+        ["output_file"],
+        type=lambda x: TextIOWrapper(BytesIO(x.encode("utf-8"))),
+        nargs="?",
+        default=None,
+        help="Output file",
     )
     log_level: ArgumentSpec[Literal["DEBUG", "INFO", "WARNING", "ERROR"]] = ArgumentSpec(
         ["--log-level"], default="INFO", help="Set log level."
