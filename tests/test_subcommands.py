@@ -32,26 +32,22 @@ class TestGitArguments(unittest.TestCase):
         # commit requires -m
         with self.assertRaises(SystemExit):
             GitArguments(["commit"])
-        commit = GitArguments(["commit", "-m", "fix"]).last_subcommand
-        assert isinstance(commit, GitCommitArguments), "commit should be an instance of GitCommitArguments"
+        commit = GitArguments(["commit", "-m", "fix"]).expect(GitCommitArguments)
         self.assertEqual(commit.message.unwrap(), "fix")
         self.assertFalse(commit.amend.unwrap())
 
     def test_commit_with_amend(self):
-        commit = GitArguments(["commit", "-m", "msg", "--amend"]).last_subcommand
-        assert isinstance(commit, GitCommitArguments), "commit should be an instance of GitCommitArguments"
+        commit = GitArguments(["commit", "-m", "msg", "--amend"]).expect(GitCommitArguments)
         self.assertTrue(commit.amend.unwrap())
 
     def test_push_subcommand_defaults(self):
-        push = GitArguments(["push"]).last_subcommand
-        assert isinstance(push, GitPushArguments), "push should be an instance of GitPushArguments"
+        push = GitArguments(["push"]).expect(GitPushArguments)
         self.assertEqual(push.remote.unwrap(), "origin")
         self.assertIsNone(push.branch.value)
         self.assertFalse(push.force.unwrap())
 
     def test_push_with_overrides(self):
-        push = GitArguments(["push", "upstream", "dev", "--force"]).last_subcommand
-        assert isinstance(push, GitPushArguments), "push should be an instance of GitPushArguments"
+        push = GitArguments(["push", "upstream", "dev", "--force"]).expect(GitPushArguments)
         self.assertEqual(push.remote.unwrap(), "upstream")
         self.assertEqual(push.branch.unwrap(), "dev")
         self.assertTrue(push.force.unwrap())
@@ -72,8 +68,7 @@ class RootArgs(BaseArguments):
 
 class TestNestedSubcommands(unittest.TestCase):
     def test_two_levels(self):
-        baz = RootArgs(["FOO_VAL", "bar", "baz", "--qux", "QUX_VAL"]).last_subcommand
-        assert isinstance(baz, BazArgs), f"baz should be an instance of BarArgs: {type(baz)}"
+        baz = RootArgs(["FOO_VAL", "bar", "baz", "--qux", "QUX_VAL"]).expect(BazArgs)
         self.assertEqual(baz.qux.unwrap(), "QUX_VAL")
 
     def test_error_on_missing(self):

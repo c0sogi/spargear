@@ -62,25 +62,19 @@ class TestDynamicSubcommands(unittest.TestCase):
         with self.assertRaises(SystemExit):
             DynamicGitArguments(["commit"])
 
-        git_args = DynamicGitArguments(["commit", "-m", "fix"])
-        commit = git_args.last_subcommand
-        assert isinstance(commit, DynamicCommitArguments), "commit should be an instance of DynamicCommitArguments"
+        commit = DynamicGitArguments(["commit", "-m", "fix"]).expect(DynamicCommitArguments)
         self.assertEqual(commit.message.unwrap(), "fix")
         self.assertFalse(commit.amend.unwrap())
 
     def test_lambda_factory_push(self):
         """Test subcommand with lambda factory."""
-        git_args = DynamicGitArguments(["push"])
-        push = git_args.last_subcommand
-        assert isinstance(push, DynamicPushArguments), "push should be an instance of DynamicPushArguments"
+        push = DynamicGitArguments(["push"]).expect(DynamicPushArguments)
         self.assertEqual(push.remote.unwrap(), "origin")
         self.assertFalse(push.force.unwrap())
 
     def test_direct_class_status(self):
         """Test subcommand with direct class (should still work)."""
-        git_args = DynamicGitArguments(["status", "-m", "test"])
-        status = git_args.last_subcommand
-        assert isinstance(status, DynamicCommitArguments), "status should be an instance of DynamicCommitArguments"
+        status = DynamicGitArguments(["status", "-m", "test"]).expect(DynamicCommitArguments)
         self.assertEqual(status.message.unwrap(), "test")
 
     def test_factory_called_on_demand(self):

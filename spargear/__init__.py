@@ -1,8 +1,8 @@
-from ._typing import SUPPRESS, Action, Annotated
+from ._typing import Annotated
 from .argspec import ArgumentSpec, ArgumentSpecType
 from .arguments import RunnableArguments, SubcommandArguments
 from .base import BaseArguments
-from .subcommand import SubcommandSpec, subcommand
+from .subcommand import SubcommandSpec, subcommand, subcommandclass
 
 __all__ = [
     # Core classes
@@ -10,13 +10,12 @@ __all__ = [
     "ArgumentSpec",
     # Subcommand support (recommended)
     "subcommand",
+    "subcommandclass",
     "SubcommandSpec",
     # Advanced features
     "RunnableArguments",
     "SubcommandArguments",
     "ArgumentSpecType",
     # Utilities
-    "SUPPRESS",
-    "Action",
     "Annotated",
 ]

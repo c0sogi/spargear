@@ -11,7 +11,7 @@ A powerful yet simple Python library for declarative command-line argument parsi
 - 🚀 **Typed and Safe**: Leveraging Python typing and dataclasses to ensure type safety and developer productivity.
 - 🔧 **Flexible**: Supports complex argument parsing scenarios, including subcommands and nested configurations.
 - 📦 **Minimal Dependencies**: Pure Python, built directly upon the reliable `argparse` module.
-- 🎯 **Modern API**: Beautiful `@subcommand` decorator for intuitive subcommand definition.
+- 🎯 **Modern API**: Beautiful `@subcommand` or `@subcommandclass` decorator for intuitive subcommand definition.
 
 ## Installation
 
@@ -26,21 +26,25 @@ pip install spargear
 Define your arguments:
 
 ```python
-from spargear import ArgumentSpec, BaseArguments
+from typing import Annotated, Optional
+
+from spargear import BaseArguments
 
 
 class MyArgs(BaseArguments):
-    input_file: ArgumentSpec[str] = ArgumentSpec(["-i", "--input"], required=True, help="Input file path")
-    verbose: ArgumentSpec[bool] = ArgumentSpec(["-v", "--verbose"], action="store_true", help="Enable verbose output")
+    input_file: Annotated[Optional[str], "-i", "--input"] = None
+    """Input file path"""
+    verbose: Annotated[bool, "-v", "--verbose"] = False
+    """Enable verbose output"""
+
 
 # Parse the command-line arguments
 args = MyArgs()
 
 # Access the parsed arguments
-input_file: str = args.input_file.unwrap()  # If none, it raises an error
+input_file: Optional[str] = args.input_file
 # input_file: str | None = args.input_file.value
-verbose: bool = args.verbose.unwrap()  # If none, it raises an error
-# verbose: str | bool = args.verbose.value
+verbose: bool = args.verbose  # store_true `-v` or `--verbose` to True
 print(f"Input file: {input_file}")
 print(f"Verbose mode: {verbose}")
 ```
@@ -51,66 +55,40 @@ Run your CLI:
 python app.py --input example.txt --verbose
 ```
 
-## Features
+## Subcommands with @subcommand or @subcommandclass decorator
 
-- **Modern `@subcommand` decorator** for clean subcommand definitions
-- Automatic inference of argument types
-- Nested subcommands with clear definitions
-- Typed file handlers via custom protocols
-- Suppress arguments seamlessly
-- **Default factories** for dynamic value generation (UUIDs, timestamps, etc.)
-- **Dataclass conversion** for easy integration with other libraries
-- **JSON/Pickle serialization** for configuration management
-- **Configuration file support** with command-line override capabilities
-
-## Subcommands with @subcommand decorator
-
-The easiest and most intuitive way to define subcommands is using the `@subcommand` decorator:
+The easiest and most intuitive way to define subcommands is using the `@subcommand` or `@subcommandclass` decorator:
 
 ```python
-from spargear import BaseArguments, ArgumentSpec, subcommand
-
-
-class InitArguments(BaseArguments):
-    """Arguments for the init subcommand."""
-    name: ArgumentSpec[str] = ArgumentSpec(["name"], help="Project name")
-
-
-class CommitArguments(BaseArguments):
-    """Arguments for the commit subcommand."""
-    message: ArgumentSpec[str] = ArgumentSpec(["-m", "--message"], required=True, help="Commit message")
-    amend: ArgumentSpec[bool] = ArgumentSpec(["--amend"], action="store_true", help="Amend previous commit")
+from spargear import BaseArguments, subcommandclass
 
 
 class GitCLI(BaseArguments):
     """A Git-like CLI tool."""
-    
-    @subcommand(help="Initialize a new repository")
-    def init():
-        """Initialize a new Git repository.
-        
-        Creates a new repository in the current directory.
-        """
-        return InitArguments
-    
-    @subcommand(name="commit", help="Record changes to the repository")
-    def commit_cmd():
-        return CommitArguments
+
+    @subcommandclass(help="Initialize a new repository")
+    class Init(BaseArguments):
+        """Initialize a new Git repository."""
+
+        NAME: str
+
+    @subcommandclass(help="Record changes to the repository")
+    class Commit(BaseArguments):
+        """Record changes."""
+
+        message: str
+        amend: bool = False
 
 
 # Parse and use
 args = GitCLI()
 
 # Access the active subcommand
-if args.last_subcommand:
-    if isinstance(args.last_subcommand, InitArguments):
-        name = args.last_subcommand.name.unwrap()
-        print(f"Initializing project: {name}")
-    
-    elif isinstance(args.last_subcommand, CommitArguments):
-        message = args.last_subcommand.message.unwrap()
-        amend = args.last_subcommand.amend.unwrap()
-        print(f"Committing: {message} (amend: {amend})")
+args.inspect(GitCLI.Init, lambda init_args: print(f"Initializing project: {init_args.NAME}"))
+args.inspect(
+    GitCLI.Commit,
+    lambda commit_args: print(f"Committing: {commit_args.message} (amend: {commit_args.amend}"),
+)
 ```
 
 Run your CLI:

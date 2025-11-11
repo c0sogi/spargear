@@ -21,6 +21,7 @@ from typing import (
     Sequence,
     Tuple,
     Type,
+    TypeVar,
     Union,
     cast,
     overload,
@@ -39,10 +40,14 @@ from ._typing import (
     is_optional,
     sanitize_flag,
 )
-from .argspec import ArgumentSpec, ArgumentSpecType, ensure_no_optional
+from .argspec import ArgumentKwargs, ArgumentSpec, ArgumentSpecType, ensure_no_optional
 from .subcommand import SubcommandSpec
 
+S = TypeVar("S", bound="BaseArguments")
+T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+SubcommandLike = Union[Type[S], SubcommandSpec[S]]
 
 
 class BaseArguments:
@@ -55,6 +60,31 @@ class BaseArguments:
     @property
     def last_subcommand(self) -> Optional["BaseArguments"]:
         return self.__subcommand
+
+    def ok(self, subcommand_type: SubcommandLike[S]) -> Optional[S]:
+        subcommand_type = _ensure_not_subcommand_spec(subcommand_type)
+        if (subcommand := self.last_subcommand) is None or not isinstance(subcommand, subcommand_type):
+            return None
+        return subcommand
+
+    def inspect(self, subcommand_type: SubcommandLike[S], f: Callable[[S], None]) -> Optional[S]:
+        subcommand_type = _ensure_not_subcommand_spec(subcommand_type)
+        if (subcommand := self.ok(subcommand_type)) is None:
+            return None
+        f(subcommand)
+        return subcommand
+
+    def expect(self, subcommand_type: SubcommandLike[S]) -> S:
+        subcommand_type = _ensure_not_subcommand_spec(subcommand_type)
+        if (subcommand := self.ok(subcommand_type)) is None:
+            raise ValueError(f"Expected subcommand {subcommand_type.__name__}, but got {subcommand.__class__.__name__}")
+        return subcommand
+
+    def map(self, subcommand_type: SubcommandLike[S], f: Callable[[S], T]) -> Optional[T]:
+        subcommand_type = _ensure_not_subcommand_spec(subcommand_type)
+        if (subcommand := self.ok(subcommand_type)) is not None:
+            return f(subcommand)
+        return None
 
     def __init__(self, args: Optional[Sequence[str]] = None, _internal_init: bool = False) -> None:
         """
@@ -585,9 +615,9 @@ class BaseArguments:
 
     @classmethod
     def __add_argument_to_parser(
-        cls, parser: argparse.ArgumentParser, name_or_flags: List[str], **kwargs: object
+        cls, parser: argparse.ArgumentParser, name_or_flags: List[str], kwargs: "ArgumentKwargs[object]"
     ) -> None:
-        parser.add_argument(*name_or_flags, **kwargs)  # type: ignore
+        parser.add_argument(*name_or_flags, **{k: v for k, v in kwargs.items() if v is not None})  # pyright: ignore[reportArgumentType]
 
     @classmethod
     def __configure_parser(cls, parser: argparse.ArgumentParser, _depth: int = 0) -> None:
@@ -596,11 +626,11 @@ class BaseArguments:
             kwargs = spec.get_add_argument_kwargs()
             is_positional = not any(name.startswith("-") for name in spec.name_or_flags)
             if is_positional:
-                kwargs.pop("required", None)
-                cls.__add_argument_to_parser(parser, spec.name_or_flags, **kwargs)
+                kwargs["required"] = None
+                cls.__add_argument_to_parser(parser, spec.name_or_flags, kwargs)
             else:
-                kwargs.setdefault("dest", key)
-                cls.__add_argument_to_parser(parser, spec.name_or_flags, **kwargs)
+                kwargs["dest"] = key
+                cls.__add_argument_to_parser(parser, spec.name_or_flags, kwargs)
 
         # 2) if there are subcommands, add them at this level
         if cls._has_subcommands():
@@ -719,12 +749,14 @@ def _infer_spec_and_correct_typehint_from_nonspec_typehint(
 
         optional = optional or is_optional(args[0])
         type_no_optional_or_spec = ensure_no_optional(args[0])
-        callable_metadata = next((a for a in args[1:] if callable(a)), None)
+        annotated: Tuple[object, ...] = args[1:]
+        annotated_first_callable: Optional[Callable[[str], object]] = next((a for a in annotated if callable(a)), None)
     else:
-        callable_metadata: Optional[Callable[[str], object]] = None
+        annotated_first_callable = None
+        annotated = ()
 
-    if callable_metadata is not None:
-        type = callable_metadata
+    if annotated_first_callable is not None:
+        type = annotated_first_callable
         if get_arguments_of_container_types(
             type_no_optional_or_spec=type_no_optional_or_spec,
             container_types=(list, tuple),
@@ -760,13 +792,21 @@ def _infer_spec_and_correct_typehint_from_nonspec_typehint(
         default_factory = attr_value
         default_value = None
 
+    name_or_flags: List[str] = [x for x in ([x for x in annotated if isinstance(x, str)] or [sanitize_flag(attr_name)])]
     spec = ArgumentSpec(
-        name_or_flags=[sanitize_flag(attr_name)],
+        name_or_flags=name_or_flags,
         default=default_value,
         default_factory=default_factory,
         required=default_value is None and default_factory is None and not optional,
         help=docstrings.get(attr_name, ""),
         action=action,
         type=type,
+        annotated=annotated,
     )
     return spec, type_no_optional_or_spec
+
+
+def _ensure_not_subcommand_spec(subcommand_spec: SubcommandLike[S]) -> Type[S]:
+    if isinstance(subcommand_spec, SubcommandSpec):
+        return subcommand_spec.get_argument_class()
+    return subcommand_spec

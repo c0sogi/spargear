@@ -55,26 +55,20 @@ class GitArgumentsWithDecorator(BaseArguments):
 class TestSubcommandDecorator(unittest.TestCase):
     def test_decorator_with_help(self):
         """Test that @subcommand with help parameter works."""
-        args = GitArgumentsWithDecorator(["commit", "-m", "test commit"])
-        commit = args.last_subcommand
-        assert isinstance(commit, GitCommitArguments), "commit should be a GitCommitArguments instance"
+        commit = GitArgumentsWithDecorator(["commit", "-m", "test commit"]).expect(GitCommitArguments)
         self.assertEqual(commit.message.unwrap(), "test commit")
         self.assertFalse(commit.amend.unwrap())
 
     def test_decorator_with_name_override(self):
         """Test that @subcommand with custom name works."""
-        args = GitArgumentsWithDecorator(["push", "upstream", "main", "--force"])
-        push = args.last_subcommand
-        assert isinstance(push, GitPushArguments), "push should be a GitPushArguments instance"
+        push = GitArgumentsWithDecorator(["push", "upstream", "main", "--force"]).expect(GitPushArguments)
         self.assertEqual(push.remote.unwrap(), "upstream")
         self.assertEqual(push.branch.unwrap(), "main")
         self.assertTrue(push.force.unwrap())
 
     def test_decorator_with_docstring(self):
         """Test that @subcommand extracts help from docstring."""
-        args = GitArgumentsWithDecorator(["status", "--short"])
-        status = args.last_subcommand
-        assert isinstance(status, GitStatusArguments), "status should be a GitStatusArguments instance"
+        status = GitArgumentsWithDecorator(["status", "--short"]).expect(GitStatusArguments)
         self.assertTrue(status.short.unwrap())
 
     def test_subcommand_specs_created(self):
@@ -118,9 +112,7 @@ class GitArgumentsWithDirectClass(BaseArguments):
 class TestDirectArgumentClass(unittest.TestCase):
     def test_direct_argument_class(self):
         """Test using argument_class parameter directly."""
-        args = GitArgumentsWithDirectClass(["commit", "-m", "direct test"])
-        commit = args.last_subcommand
-        assert isinstance(commit, GitCommitArguments), "commit should be a GitCommitArguments instance"
+        commit = GitArgumentsWithDirectClass(["commit", "-m", "direct test"]).expect(GitCommitArguments)
         self.assertEqual(commit.message.unwrap(), "direct test")
 
 

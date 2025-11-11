@@ -1,10 +1,11 @@
+import argparse
 from io import BytesIO, TextIOWrapper
 import os
 import tempfile
 import unittest
 from typing import List, Literal, Optional, Tuple
 
-from spargear import SUPPRESS, ArgumentSpec, BaseArguments
+from spargear import ArgumentSpec, BaseArguments
 
 
 class SimpleArguments(BaseArguments):
@@ -41,7 +42,7 @@ class SimpleArguments(BaseArguments):
         ArgumentSpec(["--tuple-features"], help="Tuple features")
     )
     optional_flag: ArgumentSpec[str] = ArgumentSpec(
-        ["--opt-flag"], default=SUPPRESS, help="Optional flag suppressed if missing"
+        ["--opt-flag"], default=argparse.SUPPRESS, help="Optional flag suppressed if missing"
     )
 
 

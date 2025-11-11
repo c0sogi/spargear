@@ -1,5 +1,5 @@
 import argparse
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import (
     Callable,
     Dict,
@@ -9,9 +9,9 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
-    Set,
     Tuple,
     Type,
+    TypedDict,
     TypeVar,
     Union,
 )
@@ -29,6 +29,20 @@ from ._typing import (
 )
 
 T = TypeVar("T")
+
+
+class ArgumentKwargs(TypedDict, Generic[T]):
+    action: Optional[Action]
+    nargs: Optional[Union[int, Literal["*", "+", "?"]]]
+    const: Optional[T]
+    default: Optional[Union[T, SUPPRESS_LITERAL_TYPE]]
+    choices: Optional[Sequence[T]]
+    required: Optional[bool]
+    help: Optional[str]
+    metavar: Optional[str]
+    version: Optional[str]
+    type: Optional[Callable[[str], T]]
+    dest: Optional[str]
 
 
 @dataclass
@@ -49,6 +63,7 @@ class ArgumentSpec(Generic[T]):
     type: Optional[Callable[[str], T]] = None
     dest: Optional[str] = None
     value: Optional[T] = field(init=False, default=None)  # Parsed value stored here
+    annotated: Tuple[object, ...] = ()
 
     def __post_init__(self) -> None:
         """Validate that default and default_factory are not both set."""
@@ -61,30 +76,32 @@ class ArgumentSpec(Generic[T]):
             raise ValueError(f"Value for {self.name_or_flags} is None.")
         return self.value
 
-    def get_add_argument_kwargs(self) -> Dict[str, object]:
+    def unwrap_or(self, default: T) -> T:
+        """Returns the value, raising an error if it's None."""
+        if self.value is None:
+            return default
+        return self.value
+
+    def get_add_argument_kwargs(self) -> "ArgumentKwargs[T]":
         """Prepares keyword arguments for argparse.ArgumentParser.add_argument."""
-        kwargs: Dict[str, object] = {}
-        argparse_fields: Set[str] = {
-            f.name for f in fields(self) if f.name not in ("name_or_flags", "value", "default_factory")
+        arg_kwargs: ArgumentKwargs[T] = {
+            "action": self.action,
+            "nargs": self.nargs,
+            "const": self.const,
+            "default": self.default,
+            "choices": self.choices,
+            "required": self.required,
+            "help": self.help,
+            "metavar": self.metavar,
+            "version": self.version,
+            "type": self.type,
+            "dest": self.dest,
         }
-        for field_name in argparse_fields:
-            attr_value: object = getattr(self, field_name)
-            if field_name == "default":
-                if attr_value is None:
-                    # If we have a default_factory, don't set default in argparse
-                    if self.default_factory is not None:
-                        kwargs[field_name] = argparse.SUPPRESS
-                    else:
-                        pass  # Keep default=None if explicitly set or inferred
-                elif attr_value in get_args(SUPPRESS_LITERAL_TYPE):
-                    kwargs[field_name] = argparse.SUPPRESS
-                else:
-                    kwargs[field_name] = attr_value
-            elif attr_value is not None:
-                if field_name == "type" and self.action in ACTION_TYPES_THAT_DONT_SUPPORT_TYPE_KWARG:
-                    continue
-                kwargs[field_name] = attr_value
-        return kwargs
+        if arg_kwargs["action"] in ACTION_TYPES_THAT_DONT_SUPPORT_TYPE_KWARG:
+            arg_kwargs["type"] = None
+        if arg_kwargs["default"] is None and self.default_factory is not None:
+            arg_kwargs["default"] = argparse.SUPPRESS
+        return arg_kwargs
 
     def apply_default_factory(self) -> None:
         """Apply the default factory if value is None and default_factory is set."""

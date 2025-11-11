@@ -1,3 +1,4 @@
+import argparse
 import ast
 import inspect
 import logging
@@ -18,7 +19,7 @@ Annotated = typing.Annotated
 get_type_hints = typing.get_type_hints
 
 SUPPRESS_LITERAL_TYPE = typing.Literal["==SUPPRESS=="]
-SUPPRESS: SUPPRESS_LITERAL_TYPE = "==SUPPRESS=="
+SUPPRESS: SUPPRESS_LITERAL_TYPE = argparse.SUPPRESS
 ACTION_TYPES_THAT_DONT_SUPPORT_TYPE_KWARG = (
     "store_const",
     "store_true",
@@ -48,7 +49,6 @@ ContainerTypes = typing.Tuple[
 ]
 
 logger = logging.getLogger(__name__)
-
 
 
 def get_origin(obj: object) -> typing.Optional[object]:

@@ -1,5 +1,4 @@
 import unittest
-from typing import cast
 
 from spargear import ArgumentSpec, BaseArguments, SubcommandSpec
 
@@ -32,33 +31,21 @@ class TestInstanceIsolation(unittest.TestCase):
         """동일한 서브커맨드 클래스가 여러 부모에서 사용될 때 격리되는지 테스트"""
 
         # 첫 번째 부모에서 서브커맨드 사용
-        parent_a = ParentA(["shared", "--shared", "value_a", "--value", "100"])
-        sub_a = parent_a.last_subcommand
+        sub_a = ParentA(["shared", "--shared", "value_a", "--value", "100"]).expect(SharedSubCommand)
 
         # 두 번째 부모에서 서브커맨드 사용
-        parent_b = ParentB(["shared", "--shared", "value_b", "--value", "200"])
-        sub_b = parent_b.last_subcommand
-
-        # 타입 확인
-        self.assertIsInstance(sub_a, SharedSubCommand)
-        self.assertIsInstance(sub_b, SharedSubCommand)
-        self.assertIsNotNone(sub_a)
-        self.assertIsNotNone(sub_b)
-
-        # 타입 캐스팅으로 타입 체커 오류 해결
-        sub_a_typed = cast(SharedSubCommand, sub_a)
-        sub_b_typed = cast(SharedSubCommand, sub_b)
+        sub_b = ParentB(["shared", "--shared", "value_b", "--value", "200"]).expect(SharedSubCommand)
 
         # 값 격리 확인
-        self.assertEqual(sub_a_typed.shared_arg.unwrap(), "value_a")
-        self.assertEqual(sub_a_typed.value.unwrap(), 100)
+        self.assertEqual(sub_a.shared_arg.unwrap(), "value_a")
+        self.assertEqual(sub_a.value.unwrap(), 100)
 
-        self.assertEqual(sub_b_typed.shared_arg.unwrap(), "value_b")
-        self.assertEqual(sub_b_typed.value.unwrap(), 200)
+        self.assertEqual(sub_b.shared_arg.unwrap(), "value_b")
+        self.assertEqual(sub_b.value.unwrap(), 200)
 
         # 인스턴스가 독립적인지 확인
-        self.assertNotEqual(sub_a_typed.shared_arg.unwrap(), sub_b_typed.shared_arg.unwrap())
-        self.assertNotEqual(sub_a_typed.value.unwrap(), sub_b_typed.value.unwrap())
+        self.assertNotEqual(sub_a.shared_arg.unwrap(), sub_b.shared_arg.unwrap())
+        self.assertNotEqual(sub_a.value.unwrap(), sub_b.value.unwrap())
 
     def test_multiple_instances_same_class(self):
         """같은 클래스의 여러 인스턴스가 서로 독립적인지 테스트"""
@@ -68,29 +55,19 @@ class TestInstanceIsolation(unittest.TestCase):
         instance2 = ParentA(["shared", "--shared", "inst2", "--value", "20"])
         instance3 = ParentA(["shared", "--shared", "inst3", "--value", "30"])
 
-        sub1 = instance1.last_subcommand
-        sub2 = instance2.last_subcommand
-        sub3 = instance3.last_subcommand
+        sub1 = instance1.expect(SharedSubCommand)
+        sub2 = instance2.expect(SharedSubCommand)
+        sub3 = instance3.expect(SharedSubCommand)
 
         # 타입 확인
-        self.assertIsInstance(sub1, SharedSubCommand)
-        self.assertIsInstance(sub2, SharedSubCommand)
-        self.assertIsInstance(sub3, SharedSubCommand)
+        self.assertEqual(sub1.shared_arg.unwrap(), "inst1")
+        self.assertEqual(sub1.value.unwrap(), 10)
 
-        # 타입 캐스팅
-        sub1_typed = cast(SharedSubCommand, sub1)
-        sub2_typed = cast(SharedSubCommand, sub2)
-        sub3_typed = cast(SharedSubCommand, sub3)
+        self.assertEqual(sub2.shared_arg.unwrap(), "inst2")
+        self.assertEqual(sub2.value.unwrap(), 20)
 
-        # 각 인스턴스가 독립적인 값을 가지는지 확인
-        self.assertEqual(sub1_typed.shared_arg.unwrap(), "inst1")
-        self.assertEqual(sub1_typed.value.unwrap(), 10)
-
-        self.assertEqual(sub2_typed.shared_arg.unwrap(), "inst2")
-        self.assertEqual(sub2_typed.value.unwrap(), 20)
-
-        self.assertEqual(sub3_typed.shared_arg.unwrap(), "inst3")
-        self.assertEqual(sub3_typed.value.unwrap(), 30)
+        self.assertEqual(sub3.shared_arg.unwrap(), "inst3")
+        self.assertEqual(sub3.value.unwrap(), 30)
 
         # 서로 다른 인스턴스인지 확인
         self.assertIsNot(sub1, sub2)
