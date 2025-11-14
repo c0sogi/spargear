@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic, Protocol, TypeVar, runtime_checkable
+from typing import Generic, Protocol, Type, TypeVar, cast, runtime_checkable
 
 from .base import BaseArguments
 
@@ -18,7 +18,7 @@ class RunnableArguments(BaseArguments, ABC, Runnable[T]):
 
 class SubcommandArguments(BaseArguments):
     def execute(self) -> None:
-        if (subcommand := self.ok(RunnableArguments[object])) is not None:
+        if (subcommand := self.ok(cast(Type[RunnableArguments[object]], RunnableArguments))) is not None:
             subcommand.run()
         else:
             self.get_parser().print_help()

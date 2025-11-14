@@ -1,7 +1,7 @@
 import unittest
-from typing import Optional
+from typing import List, Optional
 
-from spargear import ArgumentSpec, BaseArguments, SubcommandSpec
+from spargear import ArgumentSpec, BaseArguments, RunnableArguments, SubcommandArguments, SubcommandSpec
 
 
 class GitCommitArguments(BaseArguments):
@@ -76,6 +76,32 @@ class TestNestedSubcommands(unittest.TestCase):
             RootArgs([])  # missing foo positional
         with self.assertRaises(SystemExit):
             RootArgs(["FOO_VAL", "VAL", "bar"])  # missing baz sub-subcommand
+
+
+ECHO_RUNS: List[str] = []
+
+
+class EchoSubcommandArguments(RunnableArguments[str]):
+    message: ArgumentSpec[str] = ArgumentSpec(["--message"], required=True, help="Message to echo")
+
+    def run(self) -> str:
+        message = self.message.unwrap()
+        ECHO_RUNS.append(message)
+        return message
+
+
+class EchoRootArguments(SubcommandArguments):
+    echo = SubcommandSpec("echo", help="Echo a message", argument_class=EchoSubcommandArguments)
+
+
+class TestSubcommandArgumentsExecute(unittest.TestCase):
+    def setUp(self) -> None:
+        ECHO_RUNS.clear()
+
+    def test_execute_runs_runnable_subcommand(self) -> None:
+        args = EchoRootArguments(["echo", "--message", "hello"])
+        args.execute()
+        self.assertEqual(ECHO_RUNS, ["hello"])
 
 
 if __name__ == "__main__":
